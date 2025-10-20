@@ -54,7 +54,9 @@ int player_can_play(int player, Board* board) {
     }
     return can_play;
 }
-void player_turn(Board *board, int player, int place, int clockwise) {
+int player_turn(Board *board, int player, int place, int clockwise) {
+    if(!player_can_play(player,board)) return -1;
+
     // Personalised orders
     int order_clockwise[12]    = {0, 1, 2, 3, 4, 5, 11, 10, 9, 8, 7, 6};
     int order_counterclockwise[12] = {6, 7, 8, 9, 10, 11, 5, 4, 3, 2, 1, 0};
@@ -107,6 +109,7 @@ void player_turn(Board *board, int player, int place, int clockwise) {
             break;
         }
     }
+    return 0;
 }
 
 int letter_to_int(char letter) {
@@ -129,7 +132,7 @@ int main() {
     printf("Game lauching...\n");
     Board board = create_board();
     print_board(&board);
-    player_turn(&board, 1, 3, -1);
+    player_turn(&board, 1, 3, 0);
     print_board(&board);
     for(size_t i = 0; i < 6; i++) {
         board.board[i] = 0;
@@ -137,6 +140,6 @@ int main() {
     print_board(&board);
     printf("Player1 can play :%d\n", player_can_play(0, &board));
     printf("Player2 can play :%d\n", player_can_play(1, &board));
-    printf("Player1 turn : %d", player_turn(&board, 0, 3, -1));
+    printf("Player1 turn : %d", player_turn(&board, 0, 3, 0));
     return 0;
 }
