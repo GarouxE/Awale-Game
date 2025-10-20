@@ -9,7 +9,7 @@ typedef struct
 }Board;
 
 Board create_board();
-void print_board();
+void print_board(Board* board);
 
 
 #endif
