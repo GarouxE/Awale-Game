@@ -4,7 +4,6 @@
 #include <string.h>
 
 #include "server2.h"
-#include "client2.h"
 
 static void init(void)
 {

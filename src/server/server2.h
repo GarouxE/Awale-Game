@@ -33,8 +33,11 @@ typedef struct in_addr IN_ADDR;
 
 #define BUF_SIZE    1024
 
-#include "client2.h"
-
+typedef struct
+{
+   SOCKET sock;
+   char name[BUF_SIZE];
+}Client;
 static void init(void);
 static void end(void);
 static void app(void);

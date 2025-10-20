@@ -39,7 +39,7 @@ void print_board(Board* board) {
 }
 
 int player_can_play(int player, Board* board) {
-    int i, can_play = 0;
+    int i = 0, can_play = 0;
     if (player == 0) {
         while(i < sizeof(board->board)/(sizeof(int)*2) && !can_play ) {
             if (board->board[i] != 0) can_play = 1;
