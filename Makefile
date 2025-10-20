@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -IClient -IServeur
 
 # Executables
-BIN_DIR = .
+BIN_DIR = bin
 CLIENT_EXEC = $(BIN_DIR)/client
 SERVER_EXEC = $(BIN_DIR)/server
 
