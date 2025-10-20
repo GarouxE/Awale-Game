@@ -38,15 +38,25 @@ void print_board(Board* board) {
     
 }
 
-/* int player_can_play(int player, Board board) {
-    int max_i;
-    if (player == 0)
-    for(int i = 0; i < max_i; i++) {
-
+int player_can_play(int player, Board* board) {
+    int i, can_play = 0;
+    if (player == 0) {
+        while(i < sizeof(board->board)/(sizeof(int)*2) && !can_play ) {
+            if (board->board[i] != 0) can_play = 1;
+            i++;
+        }
+        
+    } else {
+        while(i < sizeof(board->board)/sizeof(int) && !can_play) {
+            if (board->board[i] != 0) can_play = 1;
+            i++;
+        }
     }
-} */
+    return can_play;
+}
 
-void player_turn(Board *board, int player, int place, int direction) {
+int player_turn(Board *board, int player, int place, int direction) {
+    if (!player_can_play(player, board)) return -1;
     if (player == 1) {
         place += 6;
     }
@@ -82,6 +92,7 @@ void player_turn(Board *board, int player, int place, int direction) {
             break;
         }
     }
+    return 0;
 }
 
 int letter_to_int(char letter) {
@@ -104,6 +115,14 @@ int main() {
     printf("Game lauching...\n");
     Board board = create_board();
     print_board(&board);
-
+    player_turn(&board, 1, 3, -1);
+    print_board(&board);
+    for(size_t i = 0; i < 6; i++) {
+        board.board[i] = 0;
+    }
+    print_board(&board);
+    printf("Player1 can play :%d\n", player_can_play(0, &board));
+    printf("Player2 can play :%d\n", player_can_play(1, &board));
+    printf("Player1 turn : %d", player_turn(&board, 0, 3, -1));
     return 0;
 }
