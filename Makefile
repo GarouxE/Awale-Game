@@ -2,29 +2,43 @@ CC = gcc
 CFLAGS = -Wall -Wextra -IClient -IServeur
 
 # Executables
-CLIENT_EXEC = client
-SERVER_EXEC = server
+BIN_DIR = bin
+CLIENT_EXEC = $(BIN_DIR)/client
+SERVER_EXEC = $(BIN_DIR)/server
 
-# Source files
+# Sources
 CLIENT_SRC = Client/client2.c
 SERVER_SRC = Serveur/server2.c
 
-# Object files
-CLIENT_OBJ = $(CLIENT_SRC:.c=.o)
-SERVER_OBJ = $(SERVER_SRC:.c=.o)
+# Headers
+CLIENT_HEADERS = Client/client2.h
+SERVER_HEADERS = Serveur/server2.h Serveur/client2.h
+
+# Objects
+CLIENT_OBJ = Client/client2.o
+SERVER_OBJ = Serveur/server2.o
 
 .PHONY: all clean
 
-all: $(CLIENT_EXEC) $(SERVER_EXEC)
+all: $(BIN_DIR) $(CLIENT_EXEC) $(SERVER_EXEC)
 
+# Create bin directory if it doesn't exist
+$(BIN_DIR):
+	mkdir -p $(BIN_DIR)
+
+# Client build
 $(CLIENT_EXEC): $(CLIENT_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 
+Client/client2.o: $(CLIENT_SRC) $(CLIENT_HEADERS)
+	$(CC) $(CFLAGS) -c $(CLIENT_SRC) -o $@
+
+# Server build
 $(SERVER_EXEC): $(SERVER_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+Serveur/server2.o: $(SERVER_SRC) $(SERVER_HEADERS)
+	$(CC) $(CFLAGS) -c $(SERVER_SRC) -o $@
 
 clean:
-	rm -f Client/*.o Serveur/*.o $(CLIENT_EXEC) $(SERVER_EXEC)
+	rm -f Client/*.o Serveur/*.o $(BIN_DIR)/*
