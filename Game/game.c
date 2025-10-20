@@ -54,45 +54,59 @@ int player_can_play(int player, Board* board) {
     }
     return can_play;
 }
+void player_turn(Board *board, int player, int place, int clockwise) {
+    // Personalised orders
+    int order_clockwise[12]    = {0, 1, 2, 3, 4, 5, 11, 10, 9, 8, 7, 6};
+    int order_counterclockwise[12] = {6, 7, 8, 9, 10, 11, 5, 4, 3, 2, 1, 0};
+    
+    int* order = clockwise ? order_clockwise : order_counterclockwise;
 
-int player_turn(Board *board, int player, int place, int direction) {
-    if (!player_can_play(player, board)) return -1;
+    // Find the starting index
     if (player == 1) {
         place += 6;
     }
 
+    int start_index = -1;
+    for (int i = 0; i < 12; i++) {
+        if (order[i] == place) {
+            start_index = i;
+            break;
+        }
+    }
+
+    // Distribution
     int pebbles = board->board[place];
     board->board[place] = 0;
-    int iterator = place;
 
-    // Pebble distribution
+    int i = start_index;
     while (pebbles > 0) {
-        iterator = (iterator + direction + 12) % 12;
+        i = (i + 1) % 12;
 
-        //Do not distribute in the initial position
-        if (iterator == place) {
-            iterator = (iterator + direction + 12) % 12;
+        if (order[i] == place) {
+            i = (i + 1) % 12; // Do not put pebbles in the starting position
         }
 
-        board->board[iterator] += 1;
+        board->board[order[i]] += 1;
         pebbles--;
     }
 
+    // Capture
+    int iterator = order[i];
     int opponent_start = (player == 0) ? 6 : 0;
     int opponent_end   = (player == 0) ? 11 : 5;
 
-    //We capture the oponent stashes containing 2-3 pebbles
     while (iterator >= opponent_start && iterator <= opponent_end) {
-
         int count = board->board[iterator];
         if (count == 2 || count == 3) {
             board->board[iterator] = 0;
-            iterator = (iterator - direction + 12) % 12;
+
+            // GO back in the inverse order
+            i = (i - 1 + 12) % 12;
+            iterator = order[i];
         } else {
             break;
         }
     }
-    return 0;
 }
 
 int letter_to_int(char letter) {
