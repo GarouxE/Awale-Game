@@ -8,7 +8,7 @@
 Board create_board() {
     printf("Creation of the board...\n");
     Board board;
-    for (int i = 0; i < sizeof(board.board)/sizeof(int); i++ ) {
+    for (int i = 0; i < (int)(sizeof(board.board)/sizeof(int)); i++ ) {
         board.board[i] = 4;
     }
     return board;
