@@ -14,19 +14,37 @@ Board create_board() {
     return board;
 }
 
-void print_board(Board board) {
-    printf("Printing of the board...\n");
-    printf("player1: ");
+void print_board(Board* board) {
+    printf("Printing of the board...\n\n");
+    printf("    player1 \n");
     for (int i = 0; i < 6; i++) {
-        printf("%d ", board.board[i]);
+        printf("%c  ", 65+i);
     }
     printf("\n");
-    printf("player2: ");
+    for (int i = 0; i < 6; i++) {
+        printf("%d  ", board->board[i]);
+    }
+    printf("\n\n");
+
     for (int i = 6; i < 12; i++) {
-        printf("%d ", board.board[i]);
+        printf("%d  ", board->board[i]);
     }
     printf("\n");
+    for (int i = 0; i < 6; i++) {
+        printf("%c  ",  97+i);
+    }
+    printf("\n");
+    printf("    player2 \n");
+    
 }
+
+/* int player_can_play(int player, Board board) {
+    int max_i;
+    if (player == 0)
+    for(int i = 0; i < max_i; i++) {
+
+    }
+} */
 
 void player_turn(Board *board, int player, int place, int direction) {
     if (player == 1) {
@@ -85,7 +103,7 @@ int letter_to_int(char letter) {
 int main() {
     printf("Game lauching...\n");
     Board board = create_board();
-    print_board(board);
+    print_board(&board);
 
     return 0;
 }
