@@ -88,6 +88,75 @@ static int player_can_capture(Board* board) {
     return -5;  // No captures possible
 }
 
+// Check the distribution to ensure it lands in the opponent's area in case of famine
+static int simulate_distribution_and_famine(Board* board, int player, int place, int clockwise) {
+    if(player_can_play( (player+1) %2 , board ) ) return 1;
+    // Define start and end indexes for each player
+    int start = (player == 0) ? 0 : 6;
+    int end = (player == 0) ? 6 : 12;
+
+    // Get the number of pebbles in the selected pit
+    int pebbles = board->board[place];
+    int idx = place;
+    
+    // Simulate the distribution (without changing the board)
+    for (int i = 0; i < pebbles; i++) {
+        // Move to the next index based on the direction
+        if (clockwise) {
+            idx = (idx + 1) % 12;  // Clockwise
+        } else {
+            idx = (idx - 1 + 12) % 12;  // Counterclockwise
+        }
+
+        // Skip the opponent's store (index 6 or 12)
+        if ((player == 0 && idx == 6) || (player == 1 && idx == 12)) {
+            i--;  // Don't distribute a pebble into the store
+        }
+    }
+
+    // After the loop, the idx will be where the last pebble lands
+    // Check if the last pebble lands on the opponent's side
+    if ((player == 0 && idx >= 6 && idx < 12) || (player == 1 && idx >= 0 && idx < 6)) {
+        return 1;  // The pebble lands in the opponent's area
+    }
+
+    return -7;  // The last pebble does not land in the opponent's area
+}
+
+//Check id a player can feed the opponent
+static int player_can_feed_opponent(Board* board,int player) {
+    int start = (player == 0) ? 0 : 6;  // Player 1: pits 0-5, Player 2: pits 6-11
+    int end = (player == 0) ? 6 : 12;   // Player 1: ends at 6, Player 2: ends at 12
+    
+    // Check each pit in the player's side
+    for (int i = start; i < end; i++) {
+        if (board->board[i] > 0) {  // If the player has pebbles in this pit
+            int pebbles = board->board[i];  // Number of pebbles in the pit
+            
+            // Calculate the final position of the last pebble in clockwise distribution
+            int final_pos_clockwise = (i + pebbles) % 12;
+            
+            // If the last pebble lands in the opponent's area, return 1 (can feed the opponent)
+            if ((player == 0 && final_pos_clockwise >= 6 && final_pos_clockwise < 12) ||
+                (player == 1 && final_pos_clockwise >= 0 && final_pos_clockwise < 6)) {
+                return 1;
+            }
+
+            // Calculate the final position of the last pebble in counterclockwise distribution
+            int final_pos_counterclockwise = (i - pebbles + 12) % 12;
+            
+            // If the last pebble lands in the opponent's area, return 1 (can feed the opponent)
+            if ((player == 0 && final_pos_counterclockwise >= 6 && final_pos_counterclockwise < 12) ||
+                (player == 1 && final_pos_counterclockwise >= 0 && final_pos_counterclockwise < 6)) {
+                return 1;
+            }
+        }
+    }
+    
+    // If no pit can feed the opponent, return -6
+    return -6;
+}
+
 // Function to check if the move is valid and if the player can play
 static int check_player_validity(Board* board, int place, int clockwise, int player) {
     int err = player_can_play(player, board);
@@ -100,6 +169,10 @@ static int check_player_validity(Board* board, int place, int clockwise, int pla
     // Check if clockwise direction is valid
     err = check_clockwise(clockwise);
     if (err != 1) return err;  // Invalid clockwise entry
+
+    err = simulate_distribution_and_famine(board, player, place,clockwise);
+    if (err != 1) return err; // The opponent is famined and you don't feed him
+
 
     return 1;  // Everything is valid
 }
@@ -122,9 +195,32 @@ int game_over(Board* board) {
     }
 
     // Check for famine condition where a player cannot nourish the opponent
+    if (!player_can_play((board->round + 1) % 2, board) && !player_can_feed_opponent(board,(board->round % 2))) {
+        // If so, the player who can still play takes all of their remaining pebbles
+        int player = board->round % 2;  // Determine the current player
+        int start = (player == 0) ? 0 : 6;  // Player 1: pits 0-5, Player 2: pits 6-11
+        int end = (player == 0) ? 6 : 12;   // Player 1: ends at 6, Player 2: ends at 12
+        
+        // Collect all the remaining pebbles for the player who can still play
+        for (int i = start; i < end; i++) {
+            if (board->board[i] > 0) {
+                // Add the remaining pebbles in this pit to the player's capture
+                if (player == 0) {
+                    board->player1_captures += board->board[i];
+                } else {
+                    board->player2_captures += board->board[i];
+                }
+                // Set the pit to 0 since all pebbles are taken
+                board->board[i] = 0;
+            }
+        }
+        return 1;  // The game is still ongoing
+    }
+
 
     return 0;  // The game is still ongoing
 }
+
 
 //______________________________Utils______________________________
 // Convert a letter (A-Z or a-z) to an index (0-11)
@@ -228,7 +324,6 @@ static int simulate_collect_captures(Board* board, int player, int* order, int i
     // Return the final index after simulating the capture
     return opponent_can_play;
 }
-
 
 //______________________________Application______________________________
 // Create and initialize the game board
