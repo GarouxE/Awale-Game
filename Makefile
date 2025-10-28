@@ -10,18 +10,18 @@ SERVER_EXEC = $(BIN_DIR)/server
 GAME_EXEC = $(BIN_DIR)/game
 
 # Sources
-CLIENT_SRC = Client/client2.c
-SERVER_SRC = Serveur/server2.c
+CLIENT_SRC = Client/client.c
+SERVER_SRC = Serveur/server.c
 GAME_SRC = Game/game.c
 
 # Headers
-CLIENT_HEADERS = Client/client2.h
-SERVER_HEADERS = Serveur/server2.h Serveur/client2.h
+CLIENT_HEADERS = Client/client.h
+SERVER_HEADERS = Serveur/server.h Serveur/client.h
 GAME_HEADERS = Game/game.h
 
 # Objects
-CLIENT_OBJ = Client/client2.o
-SERVER_OBJ = Serveur/server2.o
+CLIENT_OBJ = Client/client.o
+SERVER_OBJ = Serveur/server.o
 GAME_OBJ = Game/game.o
 
 .PHONY: all clean
