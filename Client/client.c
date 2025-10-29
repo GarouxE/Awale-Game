@@ -1,165 +1,69 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
 #include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include "../Game/game.h"
 
-#include "client.h"
+#define PORT 8080
+#define SERVER_IP "127.0.0.1"
 
-static void init(void)
-{
-#ifdef WIN32
-   WSADATA wsa;
-   int err = WSAStartup(MAKEWORD(2, 2), &wsa);
-   if(err < 0)
-   {
-      puts("WSAStartup failed !");
-      exit(EXIT_FAILURE);
-   }
-#endif
-}
+int main() {
+    int sock;
+    struct sockaddr_in server_addr;
+    char buffer[1024];
+    char place_char;
+    int clockwise;
+    char message[256];  // Message buffer
+    char move[2];  // Buffer for the move
 
-static void end(void)
-{
-#ifdef WIN32
-   WSACleanup();
-#endif
-}
+    // Create socket
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
 
-static void app(const char *address, const char *name)
-{
-   SOCKET sock = init_connection(address);
-   char buffer[BUF_SIZE];
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    server_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
 
-   fd_set rdfs;
+    // Connect to server
+    if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Connection failed");
+        exit(EXIT_FAILURE);
+    }
 
-   /* send our name */
-   write_server(sock, name);
+    // Game loop
+    while (1) {
+        // Clear the message buffer before receiving new data
+        memset(message, 0, sizeof(message));
 
-   while(1)
-   {
-      FD_ZERO(&rdfs);
+        // Receive the board from the server
+        recv(sock, buffer, sizeof(Board), 0);
+        Board *board = (Board *)buffer;  // Cast the buffer to the board structure
 
-      /* add STDIN_FILENO */
-      FD_SET(STDIN_FILENO, &rdfs);
+        // Receive the message (e.g., "Your turn" or "Waiting for Player X")
+        recv(sock, message, sizeof(message), 0);
 
-      /* add the socket */
-      FD_SET(sock, &rdfs);
+        // Print the board and status message
+        print_board(board);
+        printf("%s\n", message);
 
-      if(select(sock + 1, &rdfs, NULL, NULL, NULL) == -1)
-      {
-         perror("select()");
-         exit(errno);
-      }
+        // If it's the player's turn, ask for input
+        if (strncmp(message, "Your turn", 9) == 0) {
+            printf("Enter your move (A-F) and direction (0 for counterclockwise, 1 for clockwise): ");
+            scanf(" %c", &place_char);
+            scanf("%d", &clockwise);
 
-      /* something from standard input : i.e keyboard */
-      if(FD_ISSET(STDIN_FILENO, &rdfs))
-      {
-         fgets(buffer, BUF_SIZE - 1, stdin);
-         {
-            char *p = NULL;
-            p = strstr(buffer, "\n");
-            if(p != NULL)
-            {
-               *p = 0;
-            }
-            else
-            {
-               /* fclean */
-               buffer[BUF_SIZE - 1] = 0;
-            }
-         }
-         write_server(sock, buffer);
-      }
-      else if(FD_ISSET(sock, &rdfs))
-      {
-         int n = read_server(sock, buffer);
-         /* server down */
-         if(n == 0)
-         {
-            printf("Server disconnected !\n");
-            break;
-         }
-         puts(buffer);
-      }
-   }
+            // Store the move in the buffer
+            move[0] = place_char;
+            move[1] = clockwise + '0';  // Convert to char
 
-   end_connection(sock);
-}
+            // Send the move to the server
+            send(sock, move, sizeof(move), 0);
+        }
+    }
 
-static int init_connection(const char *address)
-{
-   SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
-   SOCKADDR_IN sin = { 0 };
-   struct hostent *hostinfo;
-
-   if(sock == INVALID_SOCKET)
-   {
-      perror("socket()");
-      exit(errno);
-   }
-
-   hostinfo = gethostbyname(address);
-   if (hostinfo == NULL)
-   {
-      fprintf (stderr, "Unknown host %s.\n", address);
-      exit(EXIT_FAILURE);
-   }
-
-   sin.sin_addr = *(IN_ADDR *) hostinfo->h_addr;
-   sin.sin_port = htons(PORT);
-   sin.sin_family = AF_INET;
-
-   if(connect(sock,(SOCKADDR *) &sin, sizeof(SOCKADDR)) == SOCKET_ERROR)
-   {
-      perror("connect()");
-      exit(errno);
-   }
-
-   return sock;
-}
-
-static void end_connection(int sock)
-{
-   closesocket(sock);
-}
-
-static int read_server(SOCKET sock, char *buffer)
-{
-   int n = 0;
-
-   if((n = recv(sock, buffer, BUF_SIZE - 1, 0)) < 0)
-   {
-      perror("recv()");
-      exit(errno);
-   }
-
-   buffer[n] = 0;
-
-   return n;
-}
-
-static void write_server(SOCKET sock, const char *buffer)
-{
-   if(send(sock, buffer, strlen(buffer), 0) < 0)
-   {
-      perror("send()");
-      exit(errno);
-   }
-}
-
-int main(int argc, char **argv)
-{
-   if(argc < 2)
-   {
-      printf("Usage : %s [address] [pseudo]\n", argv[0]);
-      return EXIT_FAILURE;
-   }
-
-   init();
-
-   app(argv[1], argv[2]);
-
-   end();
-
-   return EXIT_SUCCESS;
+    close(sock);
+    return 0;
 }

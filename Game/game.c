@@ -49,6 +49,7 @@ static int check_clockwise(int clockwise) {
     return 1;  // Return valid 
 }
 
+/*
 // Check if the current player can make a capturing move
 static int player_can_capture(Board* board) {
     int player = board->round % 2;
@@ -87,7 +88,7 @@ static int player_can_capture(Board* board) {
 
     return -5;  // No captures possible
 }
-
+*/
 // Function to check if the move is valid and if the player can play
 static int check_player_validity(Board* board, int place, int clockwise, int player) {
     int err = player_can_play(player, board);
@@ -320,7 +321,7 @@ int player_turn(Board* board, int place, int clockwise) {
     return 0;  // Successfully executed the player's turn
 }
 
-
+/*
 int main() {
     printf("Game launching...\n");
 
@@ -378,3 +379,4 @@ int main() {
 
     return 0;
 }
+*/
