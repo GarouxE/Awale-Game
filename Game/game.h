@@ -7,6 +7,7 @@ typedef struct
     int round;
     int player1_captures;
     int player2_captures;
+    int clockwise;
 }Board;
 
 // Methods of the Board 'class'

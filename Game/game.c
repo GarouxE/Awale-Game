@@ -294,7 +294,7 @@ int player_turn(Board* board, int place, int clockwise) {
     // Personalized orders based on clockwise or counterclockwise direction
     int order_clockwise[12] = {0, 1, 2, 3, 4, 5, 11, 10, 9, 8, 7, 6};
     int order_counterclockwise[12] = {6, 7, 8, 9, 10, 11, 5, 4, 3, 2, 1, 0};
-    int* order = clockwise ? order_clockwise : order_counterclockwise;
+    int* order = board->clockwise ? order_clockwise : order_counterclockwise;
 
     // Adjust place for Player 2 (positions 6-11) based on player
     if (player == 1) {
