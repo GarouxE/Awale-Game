@@ -140,6 +140,26 @@ static void clear_clients(Client *clients, int actual)
    }
 }
 
+static int chalenge_player(char *username){
+   
+   //Challenge declined
+   //Challenge accepted
+}
+
+
+static void send_all_usernames_to_client(Client *clients, Client sender, int actual, const char *buffer, char from_server){
+   int i = 0;
+   char message[BUF_SIZE];
+   message[0] = 0;
+   strncat(message, 'Here is the list of all users: ', sizeof message - strlen(message) - 1);
+   for (int i =0; i<actual;i++){
+      strncat(message, '| ', sizeof message - strlen(message) - 1);
+      strncat(message, clients[i].name, sizeof message - strlen(message) - 1);
+   }
+   write_client(sock, message);
+
+}
+
 static void remove_client(Client *clients, int to_remove, int *actual)
 {
    /* we remove the client in the array */
