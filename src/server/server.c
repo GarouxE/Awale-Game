@@ -117,9 +117,13 @@ static void app(void)
                   printf("%s has left.\n", client.name);
                   send_message_to_all_clients(clients, client, actual, buffer, 1);
                }
-               else
-               {
-                  send_message_to_all_clients(clients, client, actual, buffer, 0);
+               else {
+                  // Commande spéciale
+                  if (buffer[0] == '/') {
+                     printf("Commande reçue de %s : %s\n", client.name, buffer);
+                     treat_command(clients, client, actual, buffer);   
+                  }
+                  else send_message_to_all_clients(clients, client, actual, buffer, 0);
                }
                break;
             }
@@ -140,23 +144,20 @@ static void clear_clients(Client *clients, int actual)
    }
 }
 
-static int chalenge_player(char *username){
+static int challenge_player(char *username){
    
    //Challenge declined
    //Challenge accepted
 }
 
 
-static void send_all_usernames_to_client(Client *clients, Client sender, int actual, const char *buffer, char from_server){
+static void list_clients(Client *clients, Client sender, int actual, char* response){
    int i = 0;
-   char message[BUF_SIZE];
-   message[0] = 0;
-   strncat(message, 'Here is the list of all users: ', sizeof message - strlen(message) - 1);
-   for (int i =0; i<actual;i++){
-      strncat(message, '| ', sizeof message - strlen(message) - 1);
-      strncat(message, clients[i].name, sizeof message - strlen(message) - 1);
+   strncat(response, "Here is the list of all users: ", BUF_SIZE - strlen(response) - 1);
+   for (i =0; i<actual;i++){
+      strncat(response, "\n - ", BUF_SIZE - strlen(response) - 1);
+      strncat(response, clients[i].name, BUF_SIZE - strlen(response) - 1);
    }
-   write_client(sock, message);
 
 }
 
@@ -193,10 +194,17 @@ static int init_connection(void)
 {
    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
    SOCKADDR_IN sin = { 0 };
+   int optval = 1; // pour activer SO_REUSEADDR
 
    if(sock == INVALID_SOCKET)
    {
       perror("socket()");
+      exit(errno);
+   }
+
+   if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0)
+   {
+      perror("setsockopt(SO_REUSEADDR)");
       exit(errno);
    }
 
@@ -247,6 +255,23 @@ static void write_client(SOCKET sock, const char *buffer)
       perror("send()");
       exit(errno);
    }
+}
+
+static void treat_command(Client *clients, Client sender, int actual, const char *buffer) {
+   
+   char response[BUF_SIZE];
+   response[0] = 0;
+   if (!strcmp(buffer, "/list")) {
+      list_clients(clients, sender, actual, response);      
+   } else if (!strcmp(buffer, "/help")) {
+      strcpy(response, "HELP");
+   } else if (strstr(buffer, "/challenge")) 
+      strcpy(response, "CHALLENGE");
+   else {
+      strcpy(response, "Command not found. Try /help to get the commands list.");
+   }
+
+   write_client(sender.sock, response);
 }
 
 int main(int argc, char **argv)
