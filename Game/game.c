@@ -23,10 +23,10 @@ static int player_can_play(int player, Board* board) {
 }
 
 // Check if the move is valid (1-6 and on a not empty cell)
-static int check_player_move(Board* board, int place){
+static int check_player_move(Board* board, int place) {
     if (place == -1 || place > 5) {
         //printf("Invalid position! Please choose a valid position (A-F or a-f).\n");
-        return -2;  // Invalid position
+        return -1;  // Invalid position
     }
 
     int player = board->round % 2;
@@ -34,73 +34,20 @@ static int check_player_move(Board* board, int place){
     if ((player == 0 &&  board->board[place] == 0) || 
         (player == 1 && board->board[place + 6] == 0)) {
         //printf("Invalid move! The chosen pit is empty. Choose another pit with pebbles.\n");
-        return -3;  //Empty pit
+        return -2;  //Empty pit
     }
 
     return 1;  // Valid move
 }
 
-//Check if the clockwise value is valid (== 0 or ==1)
-static int check_clockwise(int clockwise) {
-    if (clockwise != 0 && clockwise != 1) {
-        //printf("Invalid direction! Please enter 0 for counterclockwise or 1 for clockwise.\n");
-        return -4;  // Return -4 for invalid input
-    }
-    return 1;  // Return valid 
-}
-
-/*
-// Check if the current player can make a capturing move
-static int player_can_capture(Board* board) {
-    int player = board->round % 2;
-    int i = (player == 0) ? 0 : 6;
-    int end = (player == 0) ? 6 : 12;
-
-    for (; i < end; i++) {
-        if (board->board[i] > 0) {  // Player has pebbles to move
-            int pebbles = board->board[i];
-            int idx = i;
-            int temp_board[12];
-            memcpy(temp_board, board->board, sizeof(temp_board));
-            temp_board[i] = 0;
-
-            // Simulate pebble distribution
-            while (pebbles > 0) {
-                idx = (idx + 1) % 12;
-                if ((player == 0 && idx == 6) || (player == 1 && idx == 12)) {
-                    continue;  // Skip opponent's store
-                }
-                temp_board[idx]++;
-                pebbles--;
-            }
-
-            // Check for captures in opponent's pits
-            int capture_start = (player == 0) ? 6 : 0;
-            int capture_end = (player == 0) ? 12 : 6;
-
-            for (int j = capture_start; j < capture_end; j++) {
-                if (temp_board[j] == 2 || temp_board[j] == 3) {
-                    return 1;  // Capture possible
-                }
-            }
-        }
-    }
-
-    return -5;  // No captures possible
-}
-*/
 // Function to check if the move is valid and if the player can play
-static int check_player_validity(Board* board, int place, int clockwise, int player) {
+static int check_player_validity(Board* board, int place, int player) {
     int err = player_can_play(player, board);
     if (err != 1) return err;  // No valid move
 
     // Check if the move is valid
     err = check_player_move(board, place);
     if (err != 1 ) return err;  // Invalid position or empty pit
-
-    // Check if clockwise direction is valid
-    err = check_clockwise(clockwise);
-    if (err != 1) return err;  // Invalid clockwise entry
 
     return 1;  // Everything is valid
 }
@@ -232,6 +179,16 @@ static int simulate_collect_captures(Board* board, int player, int* order, int i
 
 
 //______________________________Application______________________________
+// Check if the current orientation is correct and sets it for the game
+int choose_clockwise(Board* board, int clockwise){
+     if (clockwise != 0 && clockwise != 1) {
+        //printf("Invalid direction! Please enter 0 for counterclockwise or 1 for clockwise.\n");
+        return -1;  // Return -1 for invalid input
+    }
+    board->clockwise = clockwise;
+    return 1;
+}
+
 // Create and initialize the game board
 Board* create_board() {
     printf("Creation of the board...\n");
@@ -284,11 +241,11 @@ void print_board(Board* board) {
 }
 
 // Execute a player's turn (distribute pebbles, handle capture, and update player/round)
-int player_turn(Board* board, int place, int clockwise) {
+int player_turn(Board* board, int place) {
     int player = board->round % 2;
 
     // Check player validity (can play, valid move, and valid clockwise direction)
-    int pass = check_player_validity(board, place, clockwise, player);
+    int pass = check_player_validity(board, place, player);
     if (pass != 1) return pass;
 
     // Personalized orders based on clockwise or counterclockwise direction
