@@ -140,11 +140,48 @@ static void clear_clients(Client *clients, int actual)
    }
 }
 
-static int chalenge_player(char *username){
-   
-   //Challenge declined
-   //Challenge accepted
+static int challenge_player(char *username, Client client, Client *clientList) {
+    char message[BUF_SIZE];
+    char buffer[BUF_SIZE];
+
+    // Check if the challenged user exists
+    Client *challengee = NULL;
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (strcmp(clientList[i].name, username) == 0) {
+            challengee = &clientList[i];
+            break;
+        }
+    }
+
+    if (challengee == NULL) {
+        snprintf(message, sizeof(message),
+                 "ERROR: no user found with the username '%s'\n", username);
+        write_client(client.sock, message);
+        return -1;
+    }
+
+    // Ask the target player if they accept the challenge
+    snprintf(message, sizeof(message),"%s has challenged you! Do you accept? (y/n)\n", client.name);
+    write_client(challengee->sock, message);
+
+    // Read response
+    memset(buffer, 0, sizeof(buffer));
+    read_client(challengee->sock, buffer);
+
+    // Handle decline
+    if (buffer[0] == 'n' || buffer[0] == 'N') {
+        snprintf(message, sizeof(message),"%s declined your challenge.\n", challengee->name);
+        write_client(client.sock, message);
+        return -1;
+    }
+
+    // Handle accept
+    snprintf(message, sizeof(message), "%s accepted your challenge!\n", challengee->name);
+    write_client(client.sock, message);
+
+    return 0;
 }
+
 
 
 static void send_all_usernames_to_client(Client *clients, Client sender, int actual, const char *buffer, char from_server){
@@ -156,7 +193,7 @@ static void send_all_usernames_to_client(Client *clients, Client sender, int act
       strncat(message, '| ', sizeof message - strlen(message) - 1);
       strncat(message, clients[i].name, sizeof message - strlen(message) - 1);
    }
-   write_client(sock, message);
+   write_client(sender.sock, message);
 
 }
 
