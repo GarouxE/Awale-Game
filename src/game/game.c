@@ -389,10 +389,6 @@ int player_turn(Board* board, int place) {
     return 0;  // Successfully executed the player's turn
 }
 
-<<<<<<< HEAD
-
-=======
->>>>>>> dev
 int main() {
     printf("Game launching...\n");
 
