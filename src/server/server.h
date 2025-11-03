@@ -44,6 +44,8 @@ static int read_client(SOCKET sock, char *buffer);
 static void write_client(SOCKET sock, const char *buffer);
 static void send_message_to_all_clients(Client *clients, Client client, int actual, const char *buffer, char from_server);
 static void list_clients(Client *clients, Client sender, int actual, char* response);
+static void modify_bio(Client *clients, Client sender, int actual, char* buffer, char* response);
+static void consult_client(Client *clients, Client sender, int actual, char*buffer, char* response);
 static void remove_client(Client *clients, int to_remove, int *actual);
 static void clear_clients(Client *clients, int actual);
 static void treat_command(Client *clients, Client client, int actual, const char *buffer);
