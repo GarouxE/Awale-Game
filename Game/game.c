@@ -23,10 +23,10 @@ static int player_can_play(int player, Board* board) {
 }
 
 // Check if the move is valid (1-6 and on a not empty cell)
-static int check_player_move(Board* board, int place) {
+static int check_player_move(Board* board, int place){
     if (place == -1 || place > 5) {
         //printf("Invalid position! Please choose a valid position (A-F or a-f).\n");
-        return -1;  // Invalid position
+        return -2;  // Invalid position
     }
 
     int player = board->round % 2;
@@ -34,10 +34,95 @@ static int check_player_move(Board* board, int place) {
     if ((player == 0 &&  board->board[place] == 0) || 
         (player == 1 && board->board[place + 6] == 0)) {
         //printf("Invalid move! The chosen pit is empty. Choose another pit with pebbles.\n");
-        return -2;  //Empty pit
+        return -3;  //Empty pit
     }
 
     return 1;  // Valid move
+}
+
+
+// Check the distribution to ensure it lands in the opponent's area in case of famine
+static int simulate_distribution_and_famine(Board* board, int player, int place) {
+    // If opponent cannot play, return 1 (famine scenario)
+    if (player_can_play((player + 1) % 2, board)) return 1;
+
+    int clockwise[12] = {0, 1, 2, 3, 4, 5, 11, 10, 9, 8, 7, 6};
+    int counterclockwise[12] = {6, 7, 8, 9, 10, 11, 5, 4, 3, 2, 1, 0};
+
+    const int *order = board->clockwise ? clockwise : counterclockwise;
+
+    // Adjust place if it's player 1
+    if (player == 1) {
+        place += 6;
+    }
+
+    int pebbles = board->board[place];
+    int start_idx = 0;
+
+    // Find the index of the starting pit in the current order
+    for (int i = 0; i < 12; i++) {
+        if (order[i] == place) {
+            start_idx = i;
+            break;
+        }
+    }
+
+    int idx = start_idx;
+
+    // Simulate distribution (just tracking position)
+    for (int i = 0; i < pebbles; i++) {
+        idx = (idx + 1) % 12;
+
+        // Skip the starting pit on wrap-around
+        if (idx == start_idx)
+            idx = (idx + 1) % 12;
+    }
+
+    // Convert back from order index to actual pit index
+    idx = order[idx];
+
+    // Check if the last pebble lands on the opponent's side
+    if ((player == 0 && idx >= 6 && idx < 12) ||
+        (player == 1 && idx >= 0 && idx < 6)) {
+        return 1;  // Lands in opponent's area
+    }
+
+    return -4;  // Does not land in opponent's area
+}
+
+//Check if a player can feed the opponent
+static int player_can_feed_opponent(Board* board,int player) {
+    int start = (player == 0) ? 0 : 6;  // Player 1: pits 0-5, Player 2: pits 6-11
+    int end = (player == 0) ? 6 : 12;   // Player 1: ends at 6, Player 2: ends at 12
+    
+    // Check each pit in the player's side
+    for (int i = start; i < end; i++) {
+        if (board->board[i] > 0) {  // If the player has pebbles in this pit
+            int pebbles = board->board[i];  // Number of pebbles in the pit
+            
+            if(board->clockwise){
+                // Calculate the final position of the last pebble in clockwise distribution
+                int final_pos_clockwise = (i + pebbles) % 12;
+                // If the last pebble lands in the opponent's area, return 1 (can feed the opponent)
+                if ((player == 0 && final_pos_clockwise >= 6 && final_pos_clockwise < 12) ||
+                    (player == 1 && final_pos_clockwise >= 0 && final_pos_clockwise < 6)) {
+                    return 1;
+                }
+            }
+            else{
+                // Calculate the final position of the last pebble in counterclockwise distribution
+            int final_pos_counterclockwise = (i - pebbles + 12) % 12;
+            // If the last pebble lands in the opponent's area, return 1 (can feed the opponent)
+            if ((player == 0 && final_pos_counterclockwise >= 6 && final_pos_counterclockwise < 12) ||
+                (player == 1 && final_pos_counterclockwise >= 0 && final_pos_counterclockwise < 6)) {
+                return 1;
+            }
+            }
+        }
+    }
+    
+    // If no pit can feed the opponent, return -5
+    return -5;
 }
 
 // Function to check if the move is valid and if the player can play
@@ -48,6 +133,11 @@ static int check_player_validity(Board* board, int place, int player) {
     // Check if the move is valid
     err = check_player_move(board, place);
     if (err != 1 ) return err;  // Invalid position or empty pit
+
+    // Check if the opponent is famined and you don't feed him
+    err = simulate_distribution_and_famine(board, player, place);
+    if (err != 1) return err; // The opponent is famined and you don't feed him
+
 
     return 1;  // Everything is valid
 }
@@ -70,9 +160,31 @@ int game_over(Board* board) {
     }
 
     // Check for famine condition where a player cannot nourish the opponent
+    if (!player_can_play((board->round + 1) % 2, board) && !player_can_feed_opponent(board,(board->round % 2))) {
+        // If so, the player who can still play takes all of their remaining pebbles
+        int player = board->round % 2;  // Determine the current player
+        int start = (player == 0) ? 0 : 6;  // Player 1: pits 0-5, Player 2: pits 6-11
+        int end = (player == 0) ? 6 : 12;   // Player 1: ends at 6, Player 2: ends at 12
+        
+        // Collect all the remaining pebbles for the player who can still play
+        for (int i = start; i < end; i++) {
+            if (board->board[i] > 0) {
+                // Add the remaining pebbles in this pit to the player's capture
+                if (player == 0) {
+                    board->player1_captures += board->board[i];
+                } else {
+                    board->player2_captures += board->board[i];
+                }
+                // Set the pit to 0 since all pebbles are taken
+                board->board[i] = 0;
+            }
+        }
+        return 1; 
+    }
 
     return 0;  // The game is still ongoing
 }
+
 
 //______________________________Utils______________________________
 // Convert a letter (A-Z or a-z) to an index (0-11)
@@ -177,11 +289,10 @@ static int simulate_collect_captures(Board* board, int player, int* order, int i
     return opponent_can_play;
 }
 
-
 //______________________________Application______________________________
 // Check if the current orientation is correct and sets it for the game
 int choose_clockwise(Board* board, int clockwise){
-     if (clockwise != 0 && clockwise != 1) {
+    if (clockwise != 0 && clockwise != 1) {
         //printf("Invalid direction! Please enter 0 for counterclockwise or 1 for clockwise.\n");
         return -1;  // Return -1 for invalid input
     }
@@ -289,6 +400,12 @@ int main() {
     }
     print_board(board);
 
+    int clockwise;
+    printf("Enter direction (0 for counterclockwise, 1 for clockwise): ");
+    scanf("%d", &clockwise);
+    choose_clockwise(board,clockwise);
+
+
     // Game loop
     while (!game_over(board)) {
         // Print the board and ask for a move
@@ -303,12 +420,9 @@ int main() {
         
         place = letter_to_int(place_char);  // Convert the letter to an index
 
-        int clockwise;
-        printf("Enter direction (0 for counterclockwise, 1 for clockwise): ");
-        scanf("%d", &clockwise);
 
         // Execute the player's turn
-        int turn = player_turn(board, place, clockwise);
+        int turn = player_turn(board, place);
         if (turn == -1) {
             printf("Player %d cannot make a move.\n", player + 1);
             continue;
