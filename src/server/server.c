@@ -95,6 +95,7 @@ static void app(void)
          strncpy(c.name, buffer, BUF_SIZE - 1);
          clients[actual] = c;
          actual++;
+         printf("%s has joined.\n", c.name);
       }
       else
       {
@@ -112,7 +113,8 @@ static void app(void)
                   closesocket(clients[i].sock);
                   remove_client(clients, i, &actual);
                   strncpy(buffer, client.name, BUF_SIZE - 1);
-                  strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
+                  strncat(buffer, " has left.", BUF_SIZE - strlen(buffer) - 1);
+                  printf("%s has left.\n", client.name);
                   send_message_to_all_clients(clients, client, actual, buffer, 1);
                }
                else
@@ -149,13 +151,13 @@ static void remove_client(Client *clients, int to_remove, int *actual)
 static void send_message_to_all_clients(Client *clients, Client sender, int actual, const char *buffer, char from_server)
 {
    int i = 0;
-   char message[BUF_SIZE];
-   message[0] = 0;
    for(i = 0; i < actual; i++)
    {
       /* we don't send message to the sender */
       if(sender.sock != clients[i].sock)
       {
+         char message[BUF_SIZE];
+         message[0] = 0;
          if(from_server == 0)
          {
             strncpy(message, sender.name, BUF_SIZE - 1);
@@ -193,7 +195,7 @@ static int init_connection(void)
       perror("listen()");
       exit(errno);
    }
-
+   printf("Server waiting for players...\n");
    return sock;
 }
 

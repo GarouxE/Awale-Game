@@ -33,8 +33,14 @@ static void app(const char *address, const char *name)
    fd_set rdfs;
 
    /* send our name */
-   write_server(sock, name);
-
+   if (name == NULL) {
+      printf("name is null");
+      perror("write_server()");
+      exit(errno);
+   }
+   write_server(sock, name); 
+   printf("You're connected !\n");
+   
    while(1)
    {
       FD_ZERO(&rdfs);
