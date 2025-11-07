@@ -5,6 +5,7 @@
 
 #include "server.h"
 #include "client.h"
+#include "../game/game.h"
 
 static void init(void)
 {
@@ -164,7 +165,7 @@ static int challenge_player(Client *clientList, Client client, int actual, char 
       return -1;
    }
 
-   snprintf(message, sizeof(message),"You've challenged %s !", client.name);
+   snprintf(message, sizeof(message),"You've challenged %s !", challengee->name);
    write_client(client.sock, message);
 
    // Ask the target player if they accept the challenge
@@ -192,6 +193,7 @@ static int challenge_player(Client *clientList, Client client, int actual, char 
 
    snprintf(message, sizeof(message), "%s accepted your challenge!", challengee->name);
    write_client(client.sock, message);
+   play(client, *challengee);
 
    return 0;
 }
@@ -239,6 +241,112 @@ static void consult_client(Client *clients, Client sender, int actual, char*buff
    if (!found) {
       strcpy(response, "User not found.");
    }
+}
+
+static void print_board(Board* board, char* buffer) {
+   int offset = 0;
+   offset += snprintf(buffer + offset, BUF_SIZE - offset, "#====================================#\n");
+   offset += snprintf(buffer + offset, BUF_SIZE - offset, "        Player1\n\n");
+
+   // Top row
+   for (int i = 0; i < 6; i++) {
+      offset += snprintf(buffer + offset, BUF_SIZE - offset, "%c:%d  ", 65 + i, board->board[i]);
+   }
+   offset += snprintf(buffer + offset, BUF_SIZE - offset, "\n");
+
+   // Bottom row
+   for (int i = 6; i < 12; i++) {
+      offset += snprintf(buffer + offset, BUF_SIZE - offset, "%c:%d  ", 97 + (i-6), board->board[i]);
+   }
+   offset += snprintf(buffer + offset, BUF_SIZE - offset, "\n        Player2\n\n");
+
+   // Captures
+   offset += snprintf(buffer + offset, BUF_SIZE - offset, "\nPlayer 1 Captures: %d\n", board->player1_captures);
+   offset += snprintf(buffer + offset, BUF_SIZE - offset, "Player 2 Captures: %d\n", board->player2_captures);
+   offset += snprintf(buffer + offset, BUF_SIZE - offset, "#====================================#\n");
+}
+
+
+int play(Client player1, Client player2) {
+   char buffer[BUF_SIZE];
+
+   snprintf(buffer, sizeof(buffer), "Game launching...!\n");
+   write_client(player1.sock, buffer);
+   write_client(player2.sock, buffer);
+   printf("Game launching...\n");
+
+   // Create the board
+   Board* board = create_board();
+   if (!board) {
+      return -1;  // Exit if board creation failed
+   }
+   int clockwise;
+   /* printf("Enter direction (0 for counterclockwise, 1 for clockwise): ");
+   scanf("%d", &clockwise); */
+   choose_clockwise(board,1);
+
+
+   // Game loop
+   while (!game_over(board)) {
+      int num_player = board->round % 2;  // Determine which player's turn
+      Client actual_player = (num_player == 0) ? player1 : player2;
+      int place;
+      char place_char;
+
+      // Print the board and ask for a move
+      print_board(board, buffer);
+      write_client(player1.sock, buffer);
+      write_client(player2.sock, buffer);
+
+      snprintf(buffer, sizeof(buffer), ">>> [Round %d] It's %s turn ! <<<", board->round, actual_player.name); 
+      write_client(player1.sock, buffer);
+      write_client(player2.sock, buffer);
+
+      snprintf(buffer, sizeof(buffer), "\nEnter your move"); 
+      write_client(actual_player.sock, buffer);
+      memset(buffer, 0, sizeof(buffer));
+      read_client(actual_player.sock, buffer);
+      
+      place_char = buffer[0];
+      printf("place_char : %c", place_char);
+      
+      place = letter_to_int(place_char);  // Convert the letter to an index
+
+      // Execute the player's turn
+      int turn = player_turn(board, place);
+      if (turn == -1) {
+         snprintf(buffer, sizeof(buffer), "You cannot play this move.");
+         continue;
+      }
+      if(turn == -2) snprintf(buffer, sizeof(buffer), "Invalid position! Please choose a valid position.\n");
+      if(turn == -3) snprintf(buffer, sizeof(buffer), "Empty cell! Please choose a valid position.\n");
+      if(turn == -4) snprintf(buffer, sizeof(buffer), "Not a valid entry for the clockwise value! Please choose a valid position.\n");
+      write_client(actual_player.sock, buffer);
+   }
+
+   // Game over, print the final scores
+
+   snprintf(buffer, sizeof(buffer), "\nGame over! Final scores:\n");
+   snprintf(buffer, sizeof(buffer), "Player 1 captures: %d", board->player1_captures);
+   snprintf(buffer, sizeof(buffer), "Player 2 captures: %d", board->player2_captures);
+   write_client(player1.sock, buffer);
+   write_client(player2.sock, buffer);
+   
+
+   if (board->player1_captures > board->player2_captures) {
+      snprintf(buffer, sizeof(buffer), "Player 1 wins!");
+   } else if (board->player2_captures > board->player1_captures) {
+      snprintf(buffer, sizeof(buffer), "Player 2 wins!");
+   } else {
+      snprintf(buffer, sizeof(buffer), "It's a tie!");
+   }
+   write_client(player1.sock, buffer);
+   write_client(player2.sock, buffer);
+   // Don't forget to free the dynamically allocated memory for the board
+   free(board);
+
+   return 0;
+
 }
 
 static void remove_client(Client *clients, int to_remove, int *actual)
@@ -352,8 +460,7 @@ static void treat_command(Client *clients, Client sender, int actual, const char
       modify_bio(clients, sender, actual, buffer, response); 
    } else if (!strncmp(buffer, "/whois ", 7)) {
       consult_client(clients, sender, actual, buffer, response);
-   }
-   else {
+   } else {
       strcpy(response, "Command not found. Try /help to get the commands list.");
    }
 
