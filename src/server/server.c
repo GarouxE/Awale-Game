@@ -193,7 +193,11 @@ static int challenge_player(Client *clientList, Client client, int actual, char 
 
    snprintf(message, sizeof(message), "%s accepted your challenge!", challengee->name);
    write_client(client.sock, message);
-   play(client, *challengee);
+   int pid = fork();
+   if(pid == 0) {
+      play(client, *challengee);
+      exit(0);
+   } 
 
    return 0;
 }
