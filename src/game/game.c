@@ -389,7 +389,7 @@ int player_turn(Board* board, int place) {
     return 0;  // Successfully executed the player's turn
 }
 
-int main() {
+/* int main() { 
     printf("Game launching...\n");
 
     // Create the board
@@ -450,3 +450,4 @@ int main() {
     return 0;
 }
 
+*/

@@ -34,6 +34,7 @@ typedef struct in_addr IN_ADDR;
 #define BUF_SIZE    1024
 
 #include "client.h"
+#include "../game/game.h" 
 
 static void init(void);
 static void end(void);
@@ -46,6 +47,8 @@ static void send_message_to_all_clients(Client *clients, Client client, int actu
 static void list_clients(Client *clients, Client sender, int actual, char* response);
 static void modify_bio(Client *clients, Client sender, int actual, char* buffer, char* response);
 static int challenge_player(Client *clientList, Client client, int actual, char *buffer);
+int play(Client player1, Client player2);
+static void print_board(Board* board, char* buffer);
 static void consult_client(Client *clients, Client sender, int actual, char*buffer, char* response);
 static void remove_client(Client *clients, int to_remove, int *actual);
 static void clear_clients(Client *clients, int actual);
