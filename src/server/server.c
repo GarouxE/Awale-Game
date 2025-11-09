@@ -123,7 +123,7 @@ static void app(void)
                   // Commande spéciale
                   if (buffer[0] == '/') {
                      printf("Commande reçue de %s : %s\n", client.name, buffer);
-                     treat_command(clients, client, actual, buffer);   
+                     treat_command(clients, client, actual, buffer, 0);   
                   }
                   else send_message_to_all_clients(clients, client, actual, buffer, 0);
                }
@@ -147,8 +147,9 @@ static void clear_clients(Client *clients, int actual)
 }
 
 static int challenge_player(Client *clientList, Client client, int actual, char *buffer) {
-   const char *username = buffer + 11; 
+   char username[BUF_SIZE]; 
    char message[BUF_SIZE];
+   parse_command(buffer, username, message, 1, 0);
    buffer[0] = '\0';
    // Check if the challenged user exists
    Client *challengee = NULL;
@@ -161,7 +162,7 @@ static int challenge_player(Client *clientList, Client client, int actual, char 
 
    if (challengee == NULL) {
       snprintf(message, sizeof(message),
-               "ERROR: no user found with the username '%s'", username);
+               "ERROR: user not found");
       write_client(client.sock, message);
       return -1;
    }
@@ -178,7 +179,7 @@ static int challenge_player(Client *clientList, Client client, int actual, char 
    read_client(challengee->sock, buffer);
 
    // Handle decline
-   if (buffer[0] == 'n' || buffer[0] == 'N') {
+   if (buffer[0] != 'y' || buffer[0] == 'Y') {
       snprintf(message, sizeof(message),"You've declined %s's challenge.", client.name);
       write_client(challengee->sock, message);
 
@@ -196,7 +197,7 @@ static int challenge_player(Client *clientList, Client client, int actual, char 
    write_client(client.sock, message);
    int pid = fork();
    if(pid == 0) {
-      play(client, *challengee);
+      play(clientList, client, actual, *challengee);
       exit(0);
    } 
 
@@ -216,7 +217,16 @@ static void list_clients(Client *clients, Client sender, int actual, char* respo
 }
 
 static void modify_bio(Client *clients, Client sender, int actual, char* buffer, char* response) {
-   const char *new_bio = buffer + 5;
+   char username[0];
+   char new_bio[BUF_SIZE];
+   parse_command(buffer, username, new_bio, 0, 1);
+
+   if (!strcmp(new_bio,"")) {
+      snprintf(response, BUF_SIZE - strlen(response) - 1,
+               "ERROR: new bio should not be empty ");
+      return;
+   }
+
    for (int i = 0; i < actual; i++) {
       if (sender.sock == clients[i].sock) {
          strncpy(clients[i].bio, new_bio, BUF_SIZE - 1);
@@ -229,7 +239,9 @@ static void modify_bio(Client *clients, Client sender, int actual, char* buffer,
 }
 
 static void consult_client(Client *clients, Client sender, int actual, char*buffer, char* response) {
-   const char *username = buffer + 7;
+   char username[BUF_SIZE];
+   char message[0];
+   parse_command(buffer, username, message, 1, 0);
    int found = 0;
 
    for (int i = 0; i < actual; i++) {
@@ -244,35 +256,77 @@ static void consult_client(Client *clients, Client sender, int actual, char*buff
       }
    }
    if (!found) {
-      strcpy(response, "User not found.");
+      strcpy(response, "ERROR : User not found.");
    }
 }
 
-static void print_board(Board* board, char* buffer) {
-   int offset = 0;
-   offset += snprintf(buffer + offset, BUF_SIZE - offset, "#====================================#\n");
-   offset += snprintf(buffer + offset, BUF_SIZE - offset, "        Player1\n\n");
+static void print_board(Board* board, char* buffer, Client player1, Client player2) {
 
-   // Top row
-   for (int i = 0; i < 6; i++) {
-      offset += snprintf(buffer + offset, BUF_SIZE - offset, "%c:%d  ", 65 + i, board->board[i]);
-   }
-   offset += snprintf(buffer + offset, BUF_SIZE - offset, "\n");
+   buffer[0] = '\0';
 
-   // Bottom row
-   for (int i = 6; i < 12; i++) {
-      offset += snprintf(buffer + offset, BUF_SIZE - offset, "%c:%d  ", 97 + (i-6), board->board[i]);
-   }
-   offset += snprintf(buffer + offset, BUF_SIZE - offset, "\n        Player2\n\n");
+   snprintf(buffer + strlen(buffer), BUF_SIZE - strlen(buffer),
+      "\n========== GAME BOARD ==========\n"
+      "          %s (P1)\n\n"
+      "    A   B   C   D   E   F\n"
+      "   (%d) (%d) (%d) (%d) (%d) (%d)\n"
+      "   (%d) (%d) (%d) (%d) (%d) (%d)\n"
+      "    a   b   c   d   e   f\n\n"
+      "          %s (P2)\n\n"
+      "Captures:\n"
+      "  %s: %d\n"
+      "  %s: %d\n"
+      "================================\n",
+      player1.name,
+      board->board[0], board->board[1], board->board[2],
+      board->board[3], board->board[4], board->board[5],
+      board->board[6], board->board[7], board->board[8],
+      board->board[9], board->board[10], board->board[11],
+      player2.name,
+      player1.name, board->player1_captures,
+      player2.name, board->player2_captures
+   );
 
-   // Captures
-   offset += snprintf(buffer + offset, BUF_SIZE - offset, "\nPlayer 1 Captures: %d\n", board->player1_captures);
-   offset += snprintf(buffer + offset, BUF_SIZE - offset, "Player 2 Captures: %d\n", board->player2_captures);
-   offset += snprintf(buffer + offset, BUF_SIZE - offset, "#====================================#\n");
 }
 
+static void list_commands(Client client, char* response) {
+   strncat(response, "Here is the list of all commands: \n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /list : to list every usernames of players connected.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /challenge [username] : to challenge a player.\n", BUF_SIZE - strlen(response) - 1);
+   //strncat(response, "- /accept", BUF_SIZE - strlen(response) - 1);
+   //strncat(response, "- /refuse", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /t [username] [message] : to chat with a player. Use 'all' to talk to every players.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /bio [message] : to modify your bio.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /whois [username] : to consult player's bio.\n", BUF_SIZE - strlen(response) - 1);
+}
 
-int play(Client player1, Client player2) {
+static void talk_to(Client* clients, Client sender, int actual, char* buffer, char* response) {
+   char username[BUF_SIZE];
+   char message[BUF_SIZE];
+   parse_command(buffer, username, message, 1, 1);
+   int found = 0; 
+
+   if (!strcmp(username, "all")) {
+      send_message_to_all_clients(clients, sender, actual, message, 0);
+      found = 1;
+   } else {
+      for (int i = 0; i<actual; i++) {
+         if (!strcmp(clients[i].name, username)) {
+            const char buffer[BUF_SIZE];
+            snprintf(buffer, BUF_SIZE - strlen(buffer) - 1, "%s whispered to you : %s", sender.name, message);
+            write_client(clients[i].sock, buffer);
+            found = 1;
+            break;
+         }
+      }
+   }
+   if (found) {   
+      snprintf(response, BUF_SIZE - strlen(response) - 1, "You've send to %s : %s", username, message );
+   } else {
+      snprintf(response, BUF_SIZE - strlen(response) - 1, "ERROR : User not found." );
+   }
+}
+
+int play(Client* clients, Client player1, int actual, Client player2) {
    char buffer[BUF_SIZE];
 
    snprintf(buffer, sizeof(buffer), "Game launching...!\n");
@@ -285,10 +339,10 @@ int play(Client player1, Client player2) {
    if (!board) {
       return -1;  // Exit if board creation failed
    }
-   int clockwise;
+   int clockwise = rand() % 2;
    /* printf("Enter direction (0 for counterclockwise, 1 for clockwise): ");
    scanf("%d", &clockwise); */
-   choose_clockwise(board,1);
+   choose_clockwise(board, clockwise);
 
 
    // Game loop
@@ -296,10 +350,10 @@ int play(Client player1, Client player2) {
       int num_player = board->round % 2;  // Determine which player's turn
       Client actual_player = (num_player == 0) ? player1 : player2;
       int place;
-      char place_char;
+      char place_char = '/';
 
       // Print the board and ask for a move
-      print_board(board, buffer);
+      print_board(board, buffer, player1, player2);
       write_client(player1.sock, buffer);
       write_client(player2.sock, buffer);
 
@@ -307,14 +361,21 @@ int play(Client player1, Client player2) {
       write_client(player1.sock, buffer);
       write_client(player2.sock, buffer);
 
-      snprintf(buffer, sizeof(buffer), "\nEnter your move"); 
-      write_client(actual_player.sock, buffer);
-      memset(buffer, 0, sizeof(buffer));
-      read_client(actual_player.sock, buffer);
-      
-      place_char = buffer[0];
-      printf("place_char : %c", place_char);
-      
+      while (place_char == '/') {
+         snprintf(buffer, sizeof(buffer), "\nEnter your move"); 
+         write_client(actual_player.sock, buffer);
+
+         memset(buffer, 0, sizeof(buffer));
+         read_client(actual_player.sock, buffer);
+
+         if (buffer[0] == '/') {
+            treat_command(clients, actual_player, actual, buffer, 1);
+            continue; // On redemande un coup
+         }
+
+         place_char = buffer[0];
+      }
+
       place = letter_to_int(place_char);  // Convert the letter to an index
 
       // Execute the player's turn
@@ -326,7 +387,9 @@ int play(Client player1, Client player2) {
       if(turn == -2) snprintf(buffer, sizeof(buffer), "Invalid position! Please choose a valid position.\n");
       if(turn == -3) snprintf(buffer, sizeof(buffer), "Empty cell! Please choose a valid position.\n");
       if(turn == -4) snprintf(buffer, sizeof(buffer), "Not a valid entry for the clockwise value! Please choose a valid position.\n");
-      write_client(actual_player.sock, buffer);
+      if (turn < 0) write_client(actual_player.sock, buffer);
+      
+      
    }
 
    // Game over, print the final scores
@@ -450,21 +513,53 @@ static void write_client(SOCKET sock, const char *buffer)
    }
 }
 
-static void treat_command(Client *clients, Client sender, int actual, const char *buffer) {
+static void parse_command(const char *buffer, char *username, char *message, int username_bool, int message_bool)
+{
+   const char *p = strchr(buffer, ' '); // première espace
+   if (!p) return; // aucune donnée après la commande
+
+   p++; // sauter l'espace
+   
+   const char *q = strchr(p, ' '); // deuxième espace
+
+   if (q && username_bool && message_bool) {
+      // user + message
+      size_t len = q - p;
+      strncpy(username, p, len);
+      username[len] = '\0';
+
+      strncpy(message, q + 1, BUF_SIZE - 1);
+      message[BUF_SIZE - 1] = '\0';
+   } else if (username_bool) {
+      // seulement user
+      strncpy(username, p, BUF_SIZE - 1);
+      username[BUF_SIZE - 1] = '\0';
+      message[0] = '\0';
+   } else if (message_bool) {
+      // seulement message
+      strncpy(message, p, BUF_SIZE - 1);
+      message[BUF_SIZE - 1] = '\0';
+      username[0] = '\0';
+   }
+}
+
+
+static void treat_command(Client *clients, Client sender, int actual, const char *buffer, int in_game) {
    
    char response[BUF_SIZE];
    response[0] = 0;
    if (!strcmp(buffer, "/list")) {
       list_clients(clients, sender, actual, response);      
    } else if (!strcmp(buffer, "/help")) {
-      strcpy(response, "HELP");
+      list_commands(sender, response);
    } else if (!strncmp(buffer, "/challenge ", 11)) {
       challenge_player(clients, sender, actual, buffer);
-      //strcpy(response, "CHALLENGE");
    } else if (!strncmp(buffer, "/bio ", 5)) {
       modify_bio(clients, sender, actual, buffer, response); 
    } else if (!strncmp(buffer, "/whois ", 7)) {
       consult_client(clients, sender, actual, buffer, response);
+   } else if (!strncmp(buffer, "/t ", 3)) {
+      talk_to(clients, sender, actual, buffer, response);
    } else {
       strcpy(response, "Command not found. Try /help to get the commands list.");
    }
