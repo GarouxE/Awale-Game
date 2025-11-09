@@ -30,11 +30,23 @@ typedef struct in_addr IN_ADDR;
 #define CRLF        "\r\n"
 #define PORT         1977
 #define MAX_CLIENTS     100
+#define MAX_SAVED_GAMES 100
 
 #define BUF_SIZE    1024
 
 #include "client.h"
 #include "../game/game.h" 
+
+
+typedef struct {
+    Board *board;
+    Client player1;
+    Client player2;
+    int player1_captures;
+    int player2_captures;
+    int public_game; // 1 for public, 0 for private
+    char game_name[BUF_SIZE]; // Optional, to name the game
+} Game;
 
 static void init(void);
 static void end(void);
@@ -46,15 +58,15 @@ static void write_client(SOCKET sock, const char *buffer);
 static void send_message_to_all_clients(Client *clients, Client client, int actual, const char *buffer, char from_server);
 static void list_clients(Client *clients, Client sender, int actual, char* response);
 static void modify_bio(Client *clients, Client sender, int actual, char* buffer, char* response);
-static int challenge_player(Client *clientList, Client client, int actual, char *buffer);
+static int challenge_player(Client *clientList, Client client, int actual, char *buffer, Game **public_games, Game **private_games);
 static void list_commands(Client client, char* response);
 static void talk_to(Client* clients, Client sender, int actual, char* buffer, char* response);
-int play(Client* clients, Client player1, int actual, Client player2);
+int play(Client* clients, Client player1, int actual, Client player2, Game **public_games, Game **private_games, int public_or_private);
 static void print_board(Board* board, char* buffer, Client player1, Client player2);
 static void consult_client(Client *clients, Client sender, int actual, char*buffer, char* response);
 static void remove_client(Client *clients, int to_remove, int *actual); 
 static void clear_clients(Client *clients, int actual);
 static void parse_command(const char *buffer, char* username, char* message, int username_bool, int message_bool);
-static void treat_command(Client *clients, Client client, int actual, const char *buffer, int in_game);
+static void treat_command(Client *clients, Client sender, int actual, const char *buffer, int in_game, Game **public_games, Game **private_games);
 
 #endif /* guard */

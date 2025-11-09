@@ -38,6 +38,10 @@ static void app(void)
    /* an array for all clients */
    Client clients[MAX_CLIENTS];
 
+    /* Arrays to hold game pointers for public and private games */
+   Game *public_games[MAX_SAVED_GAMES];
+   Game *private_games[MAX_SAVED_GAMES];
+
    fd_set rdfs;
 
    while(1)
@@ -123,7 +127,7 @@ static void app(void)
                   // Commande spéciale
                   if (buffer[0] == '/') {
                      printf("Commande reçue de %s : %s\n", client.name, buffer);
-                     treat_command(clients, client, actual, buffer, 0);   
+                     treat_command(clients, client, actual, buffer, 0, public_games, private_games);  
                   }
                   else send_message_to_all_clients(clients, client, actual, buffer, 0);
                }
@@ -146,11 +150,12 @@ static void clear_clients(Client *clients, int actual)
    }
 }
 
-static int challenge_player(Client *clientList, Client client, int actual, char *buffer) {
+static int challenge_player(Client *clientList, Client client, int actual, char *buffer, Game **public_games, Game **private_games) {
    char username[BUF_SIZE]; 
    char message[BUF_SIZE];
    parse_command(buffer, username, message, 1, 0);
    buffer[0] = '\0';
+
    // Check if the challenged user exists
    Client *challengee = NULL;
    for (int i = 0; i < actual; i++) {
@@ -167,16 +172,35 @@ static int challenge_player(Client *clientList, Client client, int actual, char 
       return -1;
    }
 
+   if(challengee->sock == client.sock){
+      snprintf(message, sizeof(message),"You'can't challenge yourself %s !", challengee->name);
+      write_client(client.sock, message);
+      return -1;
+   }
+
    snprintf(message, sizeof(message),"You've challenged %s !", challengee->name);
    write_client(client.sock, message);
 
-   // Ask the target player if they accept the challenge
-   snprintf(message, sizeof(message),"%s has challenged you! Do you accept? (y/n)", client.name);
-   write_client(challengee->sock, message);
 
-   // Read response
-   memset(buffer, 0, sizeof(buffer));
-   read_client(challengee->sock, buffer);
+   while (1) {
+      // Ask the target player if they accept the challenge
+      snprintf(message, sizeof(message),"%s has challenged you! Do you accept? (y/n)", client.name);
+      write_client(challengee->sock, message);
+
+      // Read response
+      memset(buffer, 0, sizeof(buffer));
+      read_client(challengee->sock, buffer);
+      if (buffer[0] == '0') {
+         break;
+      }else if (buffer[0] == '/') {
+         treat_command(clientList, *challengee, actual, buffer, 1, public_games, private_games);
+         continue; // On redemande un coup
+      }
+      else {
+         snprintf(buffer, sizeof(buffer), "Invalid input, please enter 0 for counterclockwise or 1 for clockwise.\n");
+         write_client(challengee->sock, buffer);
+      }
+   }
 
    // Handle decline
    if (buffer[0] != 'y' || buffer[0] == 'Y') {
@@ -197,7 +221,7 @@ static int challenge_player(Client *clientList, Client client, int actual, char 
    write_client(client.sock, message);
    int pid = fork();
    if(pid == 0) {
-      play(clientList, client, actual, *challengee);
+      play(clientList, client, actual, *challengee, public_games, private_games, type);
       exit(0);
    } 
 
@@ -326,8 +350,15 @@ static void talk_to(Client* clients, Client sender, int actual, char* buffer, ch
    }
 }
 
-int play(Client* clients, Client player1, int actual, Client player2) {
+int play(Client* clients, Client player1, int actual, Client player2, Game **public_games, Game **private_games, int type){
    char buffer[BUF_SIZE];
+   //selecting who starts randomly
+   if(rand() % 2){
+      Client temp = player1;
+      player1 = player2;
+      player2 = temp;
+   }
+
 
    snprintf(buffer, sizeof(buffer), "Game launching...!\n");
    write_client(player1.sock, buffer);
@@ -339,11 +370,33 @@ int play(Client* clients, Client player1, int actual, Client player2) {
    if (!board) {
       return -1;  // Exit if board creation failed
    }
-   int clockwise = rand() % 2;
+   int clockwise = -1;
+
    /* printf("Enter direction (0 for counterclockwise, 1 for clockwise): ");
    scanf("%d", &clockwise); */
+   while (1) {
+      snprintf(buffer, sizeof(buffer), "%s is choosing a game direction: \n", player1.name);
+      write_client(player1.sock, buffer);
+      snprintf(buffer, sizeof(buffer), "Enter direction (0 for counterclockwise, 1 for clockwise): \n");
+      write_client(player1.sock, buffer);
+      read_client(player1.sock, buffer);
+      if (buffer[0] == '0') {
+         clockwise = 0;
+         break;
+      } else if (buffer[0] == '1') {
+         clockwise = 1;
+         break;
+      } else if (buffer[0] == '/') {
+         treat_command(clients, player1, actual, buffer, 1, public_games, private_games);
+         continue; // On redemande un coup
+      }
+      else {
+         snprintf(buffer, sizeof(buffer), "Invalid input, please enter 0 for counterclockwise or 1 for clockwise.\n");
+         write_client(player1.sock, buffer);
+      }
+   }
    choose_clockwise(board, clockwise);
-
+   char* orientation = clockwise ? "clockwise" : "counterclockwise";
 
    // Game loop
    while (!game_over(board)) {
@@ -357,7 +410,7 @@ int play(Client* clients, Client player1, int actual, Client player2) {
       write_client(player1.sock, buffer);
       write_client(player2.sock, buffer);
 
-      snprintf(buffer, sizeof(buffer), ">>> [Round %d] It's %s turn ! <<<", board->round, actual_player.name); 
+      snprintf(buffer, sizeof(buffer), ">>> [Round %d] It's %s turn ! (%s) <<<", board->round, actual_player.name, orientation); 
       write_client(player1.sock, buffer);
       write_client(player2.sock, buffer);
 
@@ -369,7 +422,7 @@ int play(Client* clients, Client player1, int actual, Client player2) {
          read_client(actual_player.sock, buffer);
 
          if (buffer[0] == '/') {
-            treat_command(clients, actual_player, actual, buffer, 1);
+            treat_command(clients, actual_player, actual, buffer, 1, public_games, private_games);
             continue; // On redemande un coup
          }
 
@@ -388,8 +441,6 @@ int play(Client* clients, Client player1, int actual, Client player2) {
       if(turn == -3) snprintf(buffer, sizeof(buffer), "Empty cell! Please choose a valid position.\n");
       if(turn == -4) snprintf(buffer, sizeof(buffer), "Not a valid entry for the clockwise value! Please choose a valid position.\n");
       if (turn < 0) write_client(actual_player.sock, buffer);
-      
-      
    }
 
    // Game over, print the final scores
@@ -415,10 +466,10 @@ int play(Client* clients, Client player1, int actual, Client player2) {
 
    return 0;
 
-}
+   }
 
-static void remove_client(Client *clients, int to_remove, int *actual)
-{
+
+static void remove_client(Client *clients, int to_remove, int *actual){
    /* we remove the client in the array */
    memmove(clients + to_remove, clients + to_remove + 1, (*actual - to_remove - 1) * sizeof(Client));
    /* number client - 1 */
@@ -544,7 +595,7 @@ static void parse_command(const char *buffer, char *username, char *message, int
 }
 
 
-static void treat_command(Client *clients, Client sender, int actual, const char *buffer, int in_game) {
+static void treat_command(Client *clients, Client sender, int actual, const char *buffer, int in_game, Game **public_games, Game **private_games){
    
    char response[BUF_SIZE];
    response[0] = 0;
@@ -553,7 +604,7 @@ static void treat_command(Client *clients, Client sender, int actual, const char
    } else if (!strcmp(buffer, "/help")) {
       list_commands(sender, response);
    } else if (!strncmp(buffer, "/challenge ", 11)) {
-      challenge_player(clients, sender, actual, buffer);
+      challenge_player(clients, sender, actual, buffer, public_games, private_games);
    } else if (!strncmp(buffer, "/bio ", 5)) {
       modify_bio(clients, sender, actual, buffer, response); 
    } else if (!strncmp(buffer, "/whois ", 7)) {
