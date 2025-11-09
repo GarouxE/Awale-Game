@@ -30,9 +30,11 @@ typedef struct in_addr IN_ADDR;
 #define CRLF        "\r\n"
 #define PORT         1977
 #define MAX_CLIENTS     100
-#define MAX_SAVED_GAMES 100
 
 #define BUF_SIZE    1024
+#define BUF_VIEWERS    100
+#define MAX_SAVED_GAMES 100
+
 
 #include "client.h"
 #include "../game/game.h" 
@@ -42,10 +44,8 @@ typedef struct {
     Board *board;
     Client player1;
     Client player2;
-    int player1_captures;
-    int player2_captures;
-    int public_game; // 1 for public, 0 for private
-    char game_name[BUF_SIZE]; // Optional, to name the game
+    char game_name[BUF_SIZE];
+    Client *viewers[BUF_VIEWERS];
 } Game;
 
 static void init(void);
@@ -68,5 +68,8 @@ static void remove_client(Client *clients, int to_remove, int *actual);
 static void clear_clients(Client *clients, int actual);
 static void parse_command(const char *buffer, char* username, char* message, int username_bool, int message_bool);
 static void treat_command(Client *clients, Client sender, int actual, const char *buffer, int in_game, Game **public_games, Game **private_games);
+static int create_game(Client *player1, Client *player2, Game **gamelist, Board *board, Game *new_game);
+static int save_game(Client *player1, Client *player2, Board *board, Game *game);
+static int remove_game(Game **gamelist, Game *game);
 
 #endif /* guard */
