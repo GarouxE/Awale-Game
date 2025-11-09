@@ -6,6 +6,7 @@
 #include "server.h"
 #include "client.h"
 #include "../game/game.h"
+#include "../game/game.h"
 
 static void init(void)
 {
