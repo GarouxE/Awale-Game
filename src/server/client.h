@@ -2,6 +2,7 @@
 #define CLIENT_H
 
 #include "server.h"
+#include "message.h"
 
 typedef enum {
    AVAILABLE,
@@ -15,6 +16,7 @@ typedef struct Client
    char bio[BUF_SIZE];
    Status status;
    struct Client* challenger; //pointer towards challenger
+   MessageQueue* queue;
 }Client;
 
 

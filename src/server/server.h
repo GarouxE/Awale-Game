@@ -12,6 +12,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h> /* close */
+#include <signal.h>
 #include <netdb.h> /* gethostbyname */
 #define INVALID_SOCKET -1
 #define SOCKET_ERROR -1
@@ -36,11 +37,19 @@ typedef struct in_addr IN_ADDR;
 #include "client.h"
 #include "../game/game.h" 
 
+typedef struct {
+   Client* clients;
+   Client player1;
+   Client player2;
+   int actual;
+} GameThreadArgs;
+
 static void init(void);
 static void end(void);
 static void app(void);
 static int init_connection(void);
 static void end_connection(int sock);
+void* play_thread(void* arg);
 static int read_client(SOCKET sock, char *buffer);
 static void write_client(SOCKET sock, const char *buffer);
 static void send_message_to_all_clients(Client *clients, Client client, int actual, const char *buffer, char from_server);

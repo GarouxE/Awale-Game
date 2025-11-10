@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -Isrc/client -Isrc/server -Isrc/game
+CFLAGS = -Wall -Wextra -lpthread -Isrc/client -Isrc/server -Isrc/game
 
 # Dossiers
 SRC_DIR = src
@@ -17,13 +17,14 @@ GAME_SRC   = $(SRC_DIR)/game/game.c
 
 # Headers
 CLIENT_HEADERS = $(SRC_DIR)/client/client.h
-SERVER_HEADERS = $(SRC_DIR)/server/server.h $(SRC_DIR)/server/client.h $(SRC_DIR)/game/game.h
+SERVER_HEADERS = $(SRC_DIR)/server/server.h $(SRC_DIR)/server/client.h $(SRC_DIR)/server/message.h $(SRC_DIR)/game/game.h
 GAME_HEADERS   = $(SRC_DIR)/game/game.h
 
 # Objects
 CLIENT_OBJ = $(BUILD_DIR)/client.o
 SERVER_OBJ = $(BUILD_DIR)/server.o
 GAME_OBJ   = $(BUILD_DIR)/game.o
+MESSAGE_OBJ = $(BUILD_DIR)/message.o
 
 .PHONY: all clean
 
@@ -36,6 +37,10 @@ $(BUILD_DIR):
 $(BIN_DIR):
 	mkdir -p $(BIN_DIR)
 
+# Message build
+$(BUILD_DIR)/message.o: src/server/message.c src/server/message.h
+	$(CC) $(CFLAGS) -c src/server/message.c -o $@
+
 # Client build
 $(CLIENT_EXEC): $(CLIENT_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
@@ -44,7 +49,7 @@ $(BUILD_DIR)/client.o: $(CLIENT_SRC) $(CLIENT_HEADERS)
 	$(CC) $(CFLAGS) -c $(CLIENT_SRC) -o $@
 
 # Server build
-$(SERVER_EXEC): $(SERVER_OBJ) $(GAME_OBJ)
+$(SERVER_EXEC): $(SERVER_OBJ) $(GAME_OBJ) $(MESSAGE_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 
 $(BUILD_DIR)/server.o: $(SERVER_SRC) $(SERVER_HEADERS)

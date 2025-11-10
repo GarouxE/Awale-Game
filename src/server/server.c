@@ -2,12 +2,9 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
+#include <pthread.h>
 
 #include "server.h"
-#include "client.h"
-#include "message.h"
-#include "message.h"
-#include "../game/game.h"
 #include "../game/game.h"
 
 static void init(void)
@@ -39,12 +36,6 @@ static void app(void)
    int max = sock;
    /* an array for all clients */
    Client clients[MAX_CLIENTS];
-
-   MessageQueue queue = {0};
-   queue.front = 0;
-   queue.rear = 0;
-   pthread_mutex_init(&queue.lock, NULL);
-   pthread_cond_init(&queue.not_empty, NULL);
 
    fd_set rdfs;
 
@@ -104,6 +95,14 @@ static void app(void)
          Client c = { csock };
          strncpy(c.name, buffer, BUF_SIZE - 1);
          c.status = AVAILABLE;
+         
+         c.queue = malloc(sizeof(MessageQueue));
+         memset(c.queue, 0, sizeof(MessageQueue));
+         pthread_mutex_init(&c.queue->lock, NULL);
+         pthread_cond_init(&c.queue->not_empty, NULL);
+         c.queue->front = 0;
+         c.queue->rear = 0;
+
          clients[actual] = c;
          actual++;
          printf("%s has joined.\n", c.name);
@@ -118,17 +117,9 @@ static void app(void)
             {
                Client* client = &clients[i];
                int c = read_client(clients[i].sock, buffer);
-
-               Message msg;
-               msg.client_sock = client.sock;
-
-
                /* client disconnected */
                if(c == 0)
                {
-                  strncpy(msg.client_name, client.name, BUF_SIZE - 1);
-                  strncpy(msg.client_name, "has left.", BUF_SIZE - 1);
-                  queue_push(&queue, msg);
                   closesocket(clients[i].sock);
                   remove_client(clients, i, &actual);
                   strncpy(buffer, client->name, BUF_SIZE - 1);
@@ -137,12 +128,22 @@ static void app(void)
                   send_message_to_all_clients(clients, *client, actual, buffer, 1);
                }
                else {
-                  /* // Commande spéciale
-                  if (buffer[0] == '/') {
-                     printf("Commande reçue de %s : %s\n", client->name, buffer);
-                     treat_command(clients, client, actual, buffer, 0);   
+                  // Si le client est en jeu, on ajoute à sa queue
+                  if (client->status == IN_GAME) {
+                     Message msg;
+                     strncpy(msg.content, buffer, BUF_SIZE - 1);
+                     msg.content[BUF_SIZE - 1] = '\0';
+                     msg.client_sock = client->sock;
+                     queue_push(client->queue, msg);
+                  } else {
+                     // Commande spéciale
+                     if (buffer[0] == '/') {
+                        printf("Commande reçue de %s : %s\n", client->name, buffer);
+                        treat_command(clients, client, actual, buffer, 0);   
+                     } else {
+                        send_message_to_all_clients(clients, *client, actual, buffer, 0);
+                     }
                   }
-                  else send_message_to_all_clients(clients, *client, actual, buffer, 0);
                }
                break;
             }
@@ -339,20 +340,49 @@ static void accept_challenge(Client* clientList, Client* challengee, char* respo
 
    Client *challenger = challengee->challenger;
 
-   snprintf(response, sizeof(response),"You've accepted %s's challenge.", challenger->name);
+   snprintf(response, BUF_SIZE - sizeof(response),"You've accepted %s's challenge.", challenger->name);
    write_client(challengee->sock, response);
 
-   snprintf(response, sizeof(response), "%s accepted your challenge!", challengee->name);
+   snprintf(response, BUF_SIZE - sizeof(response), "%s accepted your challenge!", challengee->name);
    write_client(challenger->sock, response);
    challenger->status = IN_GAME;
    challengee->status = IN_GAME;
-   int pid = fork();
-   if(pid == 0) {
-      play(clientList, *challenger , actual, *challengee);
+   
+   // Créer une structure pour passer les arguments au thread
+   GameThreadArgs* args = malloc(sizeof(GameThreadArgs));
+   args->clients = clientList;
+   args->player1 = *challenger;
+   args->player2 = *challengee;
+   args->actual = actual;
+
+   pthread_t game_thread;
+   if (pthread_create(&game_thread, NULL, play_thread, args) != 0) {
+      perror("pthread_create");
+      free(args);
       challenger->status = AVAILABLE;
       challengee->status = AVAILABLE;
-      exit(0);
-   }  
+      return;
+   }
+   
+   pthread_detach(game_thread); // Le thread se nettoie automatiquement
+}
+
+
+// Wrapper pour play() compatible avec pthread
+void* play_thread(void* arg) {
+   GameThreadArgs* args = (GameThreadArgs*)arg;
+   play(args->clients, args->player1, args->actual, args->player2);
+   
+   // Remettre les joueurs disponibles
+   for (int i = 0; i < args->actual; i++) {
+      if (args->clients[i].sock == args->player1.sock ||
+          args->clients[i].sock == args->player2.sock) {
+         args->clients[i].status = AVAILABLE;
+      }
+   }
+   
+   free(args);
+   return NULL;
 }
 
 static void refuse_challenge(Client* challengee, char* response) {
@@ -382,54 +412,67 @@ int play(Client* clients, Client player1, int actual, Client player2) {
       return -1;  // Exit if board creation failed
    }
    int clockwise = rand() % 2;
-   /* printf("Enter direction (0 for counterclockwise, 1 for clockwise): ");
-   scanf("%d", clockwise); */
    choose_clockwise(board, clockwise);
-
 
    // Game loop
    while (!game_over(board)) {
       int num_player = board->round % 2;  // Determine which player's turn
-      Client actual_player = (num_player == 0) ? player1 : player2;
+      Client* actual_player = (num_player == 0) ? &player1 : &player2;
       int place;
-      char place_char = '/';
+      char place_char;
 
       // Print the board and ask for a move
       print_board(board, buffer, player1, player2);
       write_client(player1.sock, buffer);
       write_client(player2.sock, buffer);
 
-      snprintf(buffer, sizeof(buffer), ">>> [Round %d] It's %s turn ! <<<", board->round, actual_player.name); 
+      snprintf(buffer, sizeof(buffer), ">>> [Round %d] It's %s turn ! <<<\n", board->round, actual_player->name); 
       write_client(player1.sock, buffer);
       write_client(player2.sock, buffer);
 
-      while (place_char == '/') {
-         snprintf(buffer, sizeof(buffer), "\nEnter your move"); 
-         write_client(actual_player.sock, buffer);
+      snprintf(buffer, sizeof(buffer), "\nEnter your move"); 
+      write_client(actual_player->sock, buffer);
 
-         memset(buffer, 0, sizeof(buffer));
-         read_client(actual_player.sock, buffer);
+      int valid_move = 0;
+      while (!valid_move) {
+         Message msg = queue_pop(actual_player->queue);
 
-         if (buffer[0] == '/') {
-            treat_command(clients, &actual_player, actual, buffer, 1);
-            continue; // On redemande un coup
+         // Si c'est une commande, on la traite et on redemande
+         if (msg.content[0] == '/') {
+            printf("Commande reçue de %s pendant le jeu : %s\n", actual_player->name, msg.content);
+            treat_command(clients, actual_player, actual, msg.content, 1);
+            
+            // On redemande un coup
+            snprintf(buffer, sizeof(buffer), "\nEnter your move"); 
+            write_client(actual_player->sock, buffer);
+            continue; // On continue à attendre un coup
+         } 
+         
+         // Si c'est un seul caractère, c'est probablement un coup
+         if (strlen(msg.content) == 1) {
+            place_char = msg.content[0];
+            place = letter_to_int(place_char);
+            valid_move = 1; // On a un coup potentiel, on sort de la boucle
+         } else {
+            // Message invalide
+            snprintf(buffer, sizeof(buffer), "Invalid input. Enter a letter (a-f) or a command (/help)");
+            write_client(actual_player->sock, buffer);
          }
-
-         place_char = buffer[0];
       }
-
-      place = letter_to_int(place_char);  // Convert the letter to an index
 
       // Execute the player's turn
       int turn = player_turn(board, place);
-      if (turn == -1) {
-         snprintf(buffer, sizeof(buffer), "You cannot play this move.");
-         continue;
+      switch(turn) {
+         case -1: snprintf(buffer, BUF_SIZE, "You cannot play this move."); break;
+         case -2: snprintf(buffer, BUF_SIZE, "Invalid position!"); break;
+         case -3: snprintf(buffer, BUF_SIZE, "Empty cell!"); break;
+         case -4: snprintf(buffer, BUF_SIZE, "Not valid for clockwise."); break;
+         default: turn = 0; break;
       }
-      if(turn == -2) snprintf(buffer, sizeof(buffer), "Invalid position! Please choose a valid position.\n");
-      if(turn == -3) snprintf(buffer, sizeof(buffer), "Empty cell! Please choose a valid position.\n");
-      if(turn == -4) snprintf(buffer, sizeof(buffer), "Not a valid entry for the clockwise value! Please choose a valid position.\n");
-      if (turn < 0) write_client(actual_player.sock, buffer);
+      if(turn < 0) {
+         write_client(actual_player->sock, buffer);
+         continue; // redemander un coup
+      }
       
    }
 
