@@ -5,6 +5,8 @@
 
 #include "server.h"
 #include "client.h"
+#include "message.h"
+#include "message.h"
 #include "../game/game.h"
 #include "../game/game.h"
 
@@ -37,6 +39,12 @@ static void app(void)
    int max = sock;
    /* an array for all clients */
    Client clients[MAX_CLIENTS];
+
+   MessageQueue queue = {0};
+   queue.front = 0;
+   queue.rear = 0;
+   pthread_mutex_init(&queue.lock, NULL);
+   pthread_cond_init(&queue.not_empty, NULL);
 
    fd_set rdfs;
 
@@ -110,9 +118,17 @@ static void app(void)
             {
                Client* client = &clients[i];
                int c = read_client(clients[i].sock, buffer);
+
+               Message msg;
+               msg.client_sock = client.sock;
+
+
                /* client disconnected */
                if(c == 0)
                {
+                  strncpy(msg.client_name, client.name, BUF_SIZE - 1);
+                  strncpy(msg.client_name, "has left.", BUF_SIZE - 1);
+                  queue_push(&queue, msg);
                   closesocket(clients[i].sock);
                   remove_client(clients, i, &actual);
                   strncpy(buffer, client->name, BUF_SIZE - 1);
@@ -121,7 +137,7 @@ static void app(void)
                   send_message_to_all_clients(clients, *client, actual, buffer, 1);
                }
                else {
-                  // Commande spéciale
+                  /* // Commande spéciale
                   if (buffer[0] == '/') {
                      printf("Commande reçue de %s : %s\n", client->name, buffer);
                      treat_command(clients, client, actual, buffer, 0);   
