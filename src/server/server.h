@@ -44,17 +44,19 @@ static void end_connection(int sock);
 static int read_client(SOCKET sock, char *buffer);
 static void write_client(SOCKET sock, const char *buffer);
 static void send_message_to_all_clients(Client *clients, Client client, int actual, const char *buffer, char from_server);
-static void list_clients(Client *clients, Client sender, int actual, char* response);
-static void modify_bio(Client *clients, Client sender, int actual, char* buffer, char* response);
-static int challenge_player(Client *clientList, Client client, int actual, char *buffer);
-static void list_commands(Client client, char* response);
-static void talk_to(Client* clients, Client sender, int actual, char* buffer, char* response);
+static void list_clients(Client *clients, Client* sender, int actual, char* response);
+static void modify_bio(Client* sender, char* buffer, char* response);
+static int challenge_player(Client *clientList, Client* client, int actual, char *buffer);
+static void list_commands(Client* client, char* response);
+static void talk_to(Client* clients, Client* sender, int actual, char* buffer, char* response);
+static void accept_challenge(Client* clientList, Client* challengee, char* response, int actual);
+static void refuse_challenge(Client* challengee, char* response);
 int play(Client* clients, Client player1, int actual, Client player2);
 static void print_board(Board* board, char* buffer, Client player1, Client player2);
-static void consult_client(Client *clients, Client sender, int actual, char*buffer, char* response);
+static void consult_client(Client *clients, int actual, char*buffer, char* response);
 static void remove_client(Client *clients, int to_remove, int *actual); 
 static void clear_clients(Client *clients, int actual);
 static void parse_command(const char *buffer, char* username, char* message, int username_bool, int message_bool);
-static void treat_command(Client *clients, Client client, int actual, const char *buffer, int in_game);
+static void treat_command(Client *clients, Client* client, int actual, const char *buffer, int in_game);
 
 #endif /* guard */

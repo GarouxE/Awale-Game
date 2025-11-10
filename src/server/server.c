@@ -95,6 +95,7 @@ static void app(void)
 
          Client c = { csock };
          strncpy(c.name, buffer, BUF_SIZE - 1);
+         c.status = AVAILABLE;
          clients[actual] = c;
          actual++;
          printf("%s has joined.\n", c.name);
@@ -107,25 +108,25 @@ static void app(void)
             /* a client is talking */
             if(FD_ISSET(clients[i].sock, &rdfs))
             {
-               Client client = clients[i];
+               Client* client = &clients[i];
                int c = read_client(clients[i].sock, buffer);
                /* client disconnected */
                if(c == 0)
                {
                   closesocket(clients[i].sock);
                   remove_client(clients, i, &actual);
-                  strncpy(buffer, client.name, BUF_SIZE - 1);
+                  strncpy(buffer, client->name, BUF_SIZE - 1);
                   strncat(buffer, " has left.", BUF_SIZE - strlen(buffer) - 1);
-                  printf("%s has left.\n", client.name);
-                  send_message_to_all_clients(clients, client, actual, buffer, 1);
+                  printf("%s has left.\n", client->name);
+                  send_message_to_all_clients(clients, *client, actual, buffer, 1);
                }
                else {
                   // Commande spéciale
                   if (buffer[0] == '/') {
-                     printf("Commande reçue de %s : %s\n", client.name, buffer);
+                     printf("Commande reçue de %s : %s\n", client->name, buffer);
                      treat_command(clients, client, actual, buffer, 0);   
                   }
-                  else send_message_to_all_clients(clients, client, actual, buffer, 0);
+                  else send_message_to_all_clients(clients, *client, actual, buffer, 0);
                }
                break;
             }
@@ -146,99 +147,91 @@ static void clear_clients(Client *clients, int actual)
    }
 }
 
-static int challenge_player(Client *clientList, Client client, int actual, char *buffer) {
+static int challenge_player(Client *clientList, Client* client, int actual, char *buffer) {
    char username[BUF_SIZE]; 
    char message[BUF_SIZE];
    parse_command(buffer, username, message, 1, 0);
    buffer[0] = '\0';
+
+   if (client->status != AVAILABLE ) {
+      snprintf(message, sizeof(message),
+               "[ERROR] Answer to your last challenge invitation or end your current match");
+      write_client(client->sock, message);
+      return -1;
+   } else if (!strcmp(client->name, username)) {
+      snprintf(message, sizeof(message),
+               "[ERROR] You cannot challenge yourself");
+      write_client(client->sock, message);
+      return -1;
+   }
+
    // Check if the challenged user exists
    Client *challengee = NULL;
    for (int i = 0; i < actual; i++) {
       if (strcmp(clientList[i].name, username) == 0) {
          challengee = &clientList[i];
-         break;
-      }
+      } 
    }
 
    if (challengee == NULL) {
       snprintf(message, sizeof(message),
-               "ERROR: user not found");
-      write_client(client.sock, message);
+               "[ERROR] user not found");
+      write_client(client->sock, message);
+      return -1;
+   } else if (challengee->status != AVAILABLE) {
+      snprintf(message, sizeof(message),
+               "[ERROR] user not available");
+      write_client(client->sock, message);
       return -1;
    }
 
    snprintf(message, sizeof(message),"You've challenged %s !", challengee->name);
-   write_client(client.sock, message);
-
+   write_client(client->sock, message);
+   
    // Ask the target player if they accept the challenge
-   snprintf(message, sizeof(message),"%s has challenged you! Do you accept? (y/n)", client.name);
+   snprintf(message, sizeof(message),"%s has challenged you! Do you accept? Type '/accept' or '/refuse'.", client->name);
    write_client(challengee->sock, message);
 
-   // Read response
-   memset(buffer, 0, sizeof(buffer));
-   read_client(challengee->sock, buffer);
-
-   // Handle decline
-   if (buffer[0] != 'y' || buffer[0] == 'Y') {
-      snprintf(message, sizeof(message),"You've declined %s's challenge.", client.name);
-      write_client(challengee->sock, message);
-
-      snprintf(message, sizeof(message),"%s declined your challenge.", challengee->name);
-      write_client(client.sock, message);
-      return -1;
-   }
-
-   // Handle accept
-   snprintf(message, sizeof(message),"You've accepted %s's challenge.", client.name);
-   write_client(challengee->sock, message);
-
-
-   snprintf(message, sizeof(message), "%s accepted your challenge!", challengee->name);
-   write_client(client.sock, message);
-   int pid = fork();
-   if(pid == 0) {
-      play(clientList, client, actual, *challengee);
-      exit(0);
-   } 
+   challengee->status = WAITING;
+   client->status = WAITING;
+   challengee->challenger = client;
 
    return 0;
 }
 
 
 
-static void list_clients(Client *clients, Client sender, int actual, char* response){
+static void list_clients(Client *clients, Client* sender, int actual, char* response){
    int i = 0;
    strncat(response, "Here is the list of all users: ", BUF_SIZE - strlen(response) - 1);
    for (i =0; i<actual;i++){
       strncat(response, "\n - ", BUF_SIZE - strlen(response) - 1);
       strncat(response, clients[i].name, BUF_SIZE - strlen(response) - 1);
+      strncat(response, clients[i].status==AVAILABLE ? "" : 
+         clients[i].status == IN_GAME ? " (in game)" : " (waiting)",
+         BUF_SIZE - strlen(response) - 1);
    }
 
 }
 
-static void modify_bio(Client *clients, Client sender, int actual, char* buffer, char* response) {
+static void modify_bio(Client* sender, char* buffer, char* response) {
    char username[0];
    char new_bio[BUF_SIZE];
    parse_command(buffer, username, new_bio, 0, 1);
 
    if (!strcmp(new_bio,"")) {
       snprintf(response, BUF_SIZE - strlen(response) - 1,
-               "ERROR: new bio should not be empty ");
+               "[ERROR] new bio should not be empty ");
       return;
    }
 
-   for (int i = 0; i < actual; i++) {
-      if (sender.sock == clients[i].sock) {
-         strncpy(clients[i].bio, new_bio, BUF_SIZE - 1);
-         clients[i].bio[BUF_SIZE - 1] = '\0';
-         strcpy(response, "Votre bio a été mise à jour.");
-         break;
-      }
-   }
-   
+   strncpy(sender->bio, new_bio, BUF_SIZE - 1);
+   sender->bio[BUF_SIZE - 1] = '\0';
+   strcpy(response, "[SUCCESS] Votre bio a été mise à jour.");
+      
 }
 
-static void consult_client(Client *clients, Client sender, int actual, char*buffer, char* response) {
+static void consult_client(Client *clients, int actual, char*buffer, char* response) {
    char username[BUF_SIZE];
    char message[0];
    parse_command(buffer, username, message, 1, 0);
@@ -256,7 +249,7 @@ static void consult_client(Client *clients, Client sender, int actual, char*buff
       }
    }
    if (!found) {
-      strcpy(response, "ERROR : User not found.");
+      strcpy(response, "[ERROR] User not found.");
    }
 }
 
@@ -288,31 +281,31 @@ static void print_board(Board* board, char* buffer, Client player1, Client playe
 
 }
 
-static void list_commands(Client client, char* response) {
+static void list_commands(Client* client, char* response) {
    strncat(response, "Here is the list of all commands: \n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /list : to list every usernames of players connected.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /challenge [username] : to challenge a player.\n", BUF_SIZE - strlen(response) - 1);
-   //strncat(response, "- /accept", BUF_SIZE - strlen(response) - 1);
-   //strncat(response, "- /refuse", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /t [username] [message] : to chat with a player. Use 'all' to talk to every players.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /bio [message] : to modify your bio.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /whois [username] : to consult player's bio.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /accept : to accept a challenge.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /refuse : to refuse a challenge.\n", BUF_SIZE - strlen(response) - 1);
 }
 
-static void talk_to(Client* clients, Client sender, int actual, char* buffer, char* response) {
+static void talk_to(Client* clients, Client* sender, int actual, char* buffer, char* response) {
    char username[BUF_SIZE];
    char message[BUF_SIZE];
    parse_command(buffer, username, message, 1, 1);
    int found = 0; 
 
    if (!strcmp(username, "all")) {
-      send_message_to_all_clients(clients, sender, actual, message, 0);
+      send_message_to_all_clients(clients, *sender, actual, message, 0);
       found = 1;
    } else {
       for (int i = 0; i<actual; i++) {
          if (!strcmp(clients[i].name, username)) {
             const char buffer[BUF_SIZE];
-            snprintf(buffer, BUF_SIZE - strlen(buffer) - 1, "%s whispered to you : %s", sender.name, message);
+            snprintf(buffer, BUF_SIZE - strlen(buffer) - 1, "%s whispered to you : %s", sender->name, message);
             write_client(clients[i].sock, buffer);
             found = 1;
             break;
@@ -322,8 +315,41 @@ static void talk_to(Client* clients, Client sender, int actual, char* buffer, ch
    if (found) {   
       snprintf(response, BUF_SIZE - strlen(response) - 1, "You've send to %s : %s", username, message );
    } else {
-      snprintf(response, BUF_SIZE - strlen(response) - 1, "ERROR : User not found." );
+      snprintf(response, BUF_SIZE - strlen(response) - 1, "[ERROR] User not found." );
    }
+}
+
+static void accept_challenge(Client* clientList, Client* challengee, char* response, int actual) {
+
+   Client *challenger = challengee->challenger;
+
+   snprintf(response, sizeof(response),"You've accepted %s's challenge.", challenger->name);
+   write_client(challengee->sock, response);
+
+   snprintf(response, sizeof(response), "%s accepted your challenge!", challengee->name);
+   write_client(challenger->sock, response);
+   challenger->status = IN_GAME;
+   challengee->status = IN_GAME;
+   int pid = fork();
+   if(pid == 0) {
+      play(clientList, *challenger , actual, *challengee);
+      challenger->status = AVAILABLE;
+      challengee->status = AVAILABLE;
+      exit(0);
+   }  
+}
+
+static void refuse_challenge(Client* challengee, char* response) {
+   Client *challenger = challengee->challenger;
+   if (!challenger) return; 
+   challengee->challenger = NULL;
+   challengee->status = AVAILABLE;
+   challenger->status = AVAILABLE;
+
+   snprintf(response, BUF_SIZE, "%s declined your challenge.", challengee->name);
+   write_client(challenger->sock, response);
+
+   snprintf(response, BUF_SIZE, "You've declined %s's challenge.", challenger->name);
 }
 
 int play(Client* clients, Client player1, int actual, Client player2) {
@@ -341,7 +367,7 @@ int play(Client* clients, Client player1, int actual, Client player2) {
    }
    int clockwise = rand() % 2;
    /* printf("Enter direction (0 for counterclockwise, 1 for clockwise): ");
-   scanf("%d", &clockwise); */
+   scanf("%d", clockwise); */
    choose_clockwise(board, clockwise);
 
 
@@ -369,7 +395,7 @@ int play(Client* clients, Client player1, int actual, Client player2) {
          read_client(actual_player.sock, buffer);
 
          if (buffer[0] == '/') {
-            treat_command(clients, actual_player, actual, buffer, 1);
+            treat_command(clients, &actual_player, actual, buffer, 1);
             continue; // On redemande un coup
          }
 
@@ -388,7 +414,6 @@ int play(Client* clients, Client player1, int actual, Client player2) {
       if(turn == -3) snprintf(buffer, sizeof(buffer), "Empty cell! Please choose a valid position.\n");
       if(turn == -4) snprintf(buffer, sizeof(buffer), "Not a valid entry for the clockwise value! Please choose a valid position.\n");
       if (turn < 0) write_client(actual_player.sock, buffer);
-      
       
    }
 
@@ -544,7 +569,7 @@ static void parse_command(const char *buffer, char *username, char *message, int
 }
 
 
-static void treat_command(Client *clients, Client sender, int actual, const char *buffer, int in_game) {
+static void treat_command(Client *clients, Client* sender, int actual, const char *buffer, int in_game) {
    
    char response[BUF_SIZE];
    response[0] = 0;
@@ -555,16 +580,20 @@ static void treat_command(Client *clients, Client sender, int actual, const char
    } else if (!strncmp(buffer, "/challenge ", 11)) {
       challenge_player(clients, sender, actual, buffer);
    } else if (!strncmp(buffer, "/bio ", 5)) {
-      modify_bio(clients, sender, actual, buffer, response); 
+      modify_bio(sender, buffer, response); 
    } else if (!strncmp(buffer, "/whois ", 7)) {
-      consult_client(clients, sender, actual, buffer, response);
+      consult_client(clients, actual, buffer, response);
    } else if (!strncmp(buffer, "/t ", 3)) {
       talk_to(clients, sender, actual, buffer, response);
+   } else if (!strcmp(buffer, "/accept")) {
+      accept_challenge(clients, sender, response, actual);
+   } else if (!strcmp(buffer, "/refuse")) {
+      refuse_challenge(sender, response);
    } else {
       strcpy(response, "Command not found. Try /help to get the commands list.");
    }
 
-   write_client(sender.sock, response);
+   write_client(sender->sock, response);
 }
 
 int main(int argc, char **argv)
