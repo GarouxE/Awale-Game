@@ -23,5 +23,6 @@ typedef struct MessageQueue
 
 void queue_push(MessageQueue *queue, Message msg);
 Message queue_pop(MessageQueue *queue);
+Message queue_try_pop(MessageQueue *queue, int* has_player_msg);
 
 #endif

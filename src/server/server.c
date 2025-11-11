@@ -241,7 +241,6 @@ static void list_games(Game **games, char* response){
    for (i = 0; i<MAX_GAMES;i++){
       if (games[i] != NULL) {
          strncat(response, "\n - ", BUF_SIZE - strlen(response) - 1);
-         strncat(response, i+1, BUF_SIZE - strlen(response) - 1);
          if (games[i]->game_name[0] == '\0') {
             strncat(response, "[Unnamed game]", BUF_SIZE - strlen(response) - 1);
          } else {
@@ -473,6 +472,7 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
    while (!game_over(board)) {
       int num_player = board->round % 2;  // Determine which player's turn
       Client* actual_player = (num_player == 0) ? &player1 : &player2;
+      Client* opponent = (num_player == 0) ? &player2 : &player1;
       int place;
       char place_char;
 
@@ -488,30 +488,50 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
       snprintf(buffer, sizeof(buffer), "\nEnter your move"); 
       write_client(actual_player->sock, buffer);
 
-      int valid_move = 0;
+      int valid_move = 0 ;
       while (!valid_move) {
-         Message msg = queue_pop(actual_player->queue);
-
-         // Si c'est une commande, on la traite et on redemande
-         if (msg.content[0] == '/') {
-            printf("Commande reçue de %s pendant le jeu : %s\n", actual_player->name, msg.content);
-            treat_command(games, clients, actual_player, actual, msg.content, 1);
-            
-            // On redemande un coup
-            snprintf(buffer, sizeof(buffer), "\nEnter your move"); 
-            write_client(actual_player->sock, buffer);
-            continue; // On continue à attendre un coup
-         } 
+         // D'abord checker si l'adversaire a envoyé des commandes
+         int has_opponent_msg;
+         Message opponent_msg = queue_try_pop(opponent->queue, &has_opponent_msg);
          
-         // Si c'est un seul caractère, c'est probablement un coup
-         if (strlen(msg.content) == 1) {
-            place_char = msg.content[0];
-            place = letter_to_int(place_char);
-            valid_move = 1; // On a un coup potentiel, on sort de la boucle
-         } else {
-            // Message invalide
-            snprintf(buffer, sizeof(buffer), "Invalid input. Enter a letter (a-f) or a command (/help)");
-            write_client(actual_player->sock, buffer);
+         if (has_opponent_msg) {
+            if (opponent_msg.content[0] == '/') {
+               // Commande de l'adversaire - traiter immédiatement
+               printf("Commande de l'adversaire %s : %s\n", opponent->name, opponent_msg.content);
+               treat_command(games, clients, opponent, actual, opponent_msg.content, 1);   
+            }
+            // Si ce n'est pas une commande, on ignore (l'adversaire ne peut pas jouer)
+         }
+         
+         // Maintenant checker le joueur actuel (sans bloquer)
+         int has_player_msg;
+         Message player_msg = queue_try_pop(actual_player->queue, &has_player_msg);
+         
+         if (has_player_msg) {
+            if (player_msg.content[0] == '/') {
+               // Commande du joueur actuel
+               printf("Commande du joueur actuel %s : %s\n", actual_player->name, player_msg.content);
+               treat_command(games, clients, actual_player, actual, player_msg.content, 1);
+               
+               // Redemander un coup
+               snprintf(buffer, sizeof(buffer), "\nEnter your move"); 
+               write_client(actual_player->sock, buffer);
+               
+            } else if (strlen(player_msg.content) == 1) {
+               // C'est un coup !
+               place_char = player_msg.content[0];
+               place = letter_to_int(place_char);
+               valid_move = 1;
+               
+            } else {
+               // Message invalide
+               snprintf(buffer, sizeof(buffer), "Invalid input. Enter a letter (a-f) or a command (/help)");
+               write_client(actual_player->sock, buffer);
+            }
+         }
+         
+         if (!valid_move) {
+            usleep(10000); // 10ms
          }
       }
 
