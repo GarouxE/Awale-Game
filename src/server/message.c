@@ -9,7 +9,7 @@ void queue_push(MessageQueue *queue, Message msg) {
     pthread_mutex_lock(&queue->lock);
     queue->messages[queue->rear] = msg;
     queue->rear = (queue->rear + 1) % MAX_MESSAGE;
-    pthread_cond_signal(&queue->not_empty);
+    pthread_cond_broadcast(&queue->not_empty);
     pthread_mutex_unlock(&queue->lock);
 }
 
@@ -21,5 +21,22 @@ Message queue_pop(MessageQueue *queue) {
     Message msg = queue->messages[queue->front];
     queue->front = (queue->front + 1) % MAX_MESSAGE;
     pthread_mutex_unlock(&queue->lock);
+    return msg;
+}
+
+// pop function without blocking cond
+Message queue_try_pop(MessageQueue *queue, int *success) {
+    Message msg;
+    memset(&msg, 0, sizeof(Message));
+    *success = 0;
+    
+    pthread_mutex_lock(&queue->lock);
+    if (queue->front != queue->rear) {
+        msg = queue->messages[queue->front];
+        queue->front = (queue->front + 1) % MAX_MESSAGE;
+        *success = 1;
+    }
+    pthread_mutex_unlock(&queue->lock);
+    
     return msg;
 }

@@ -31,18 +31,24 @@ typedef struct in_addr IN_ADDR;
 #define CRLF        "\r\n"
 #define PORT         1977
 #define MAX_CLIENTS     100
-
+#define MAX_GAMES       100
 #define BUF_SIZE    1024
 
 #include "client.h"
 #include "../game/game.h" 
 
 typedef struct {
-   Client* clients;
+   Board *board;
    Client player1;
    Client player2;
+   char game_name[BUF_SIZE];
+} Game;
+typedef struct {
+   Game** games;
+   Client* clients;
    int actual;
-} GameThreadArgs;
+   Game* current_game;
+} Context;
 
 static void init(void);
 static void end(void);
@@ -53,19 +59,24 @@ void* play_thread(void* arg);
 static int read_client(SOCKET sock, char *buffer);
 static void write_client(SOCKET sock, const char *buffer);
 static void send_message_to_all_clients(Client *clients, Client client, int actual, const char *buffer, char from_server);
-static void list_clients(Client *clients, Client* sender, int actual, char* response);
+static void list_clients(Client *clients, int actual, char* response);
+static void list_games(Game **games, char* response);
 static void modify_bio(Client* sender, char* buffer, char* response);
 static int challenge_player(Client *clientList, Client* client, int actual, char *buffer);
 static void list_commands(Client* client, char* response);
 static void talk_to(Client* clients, Client* sender, int actual, char* buffer, char* response);
-static void accept_challenge(Client* clientList, Client* challengee, char* response, int actual);
+static void accept_challenge(Game** games, Client* clientList, Client* challengee, char* response, int actual);
 static void refuse_challenge(Client* challengee, char* response);
-int play(Client* clients, Client player1, int actual, Client player2);
+int play(Game** games, Client* clients, Client player1, int actual, Client player2, Board* board);
 static void print_board(Board* board, char* buffer, Client player1, Client player2);
 static void consult_client(Client *clients, int actual, char*buffer, char* response);
 static void remove_client(Client *clients, int to_remove, int *actual); 
 static void clear_clients(Client *clients, int actual);
 static void parse_command(const char *buffer, char* username, char* message, int username_bool, int message_bool);
-static void treat_command(Client *clients, Client* client, int actual, const char *buffer, int in_game);
+static void treat_command(Game **games, Client *clients, Client* client, int actual, const char *buffer, int in_game);
+static int create_game(Client *player1, Client *player2, Game **gamelist, Board *board, Game *new_game);
+static int save_game(Client *player1, Client *player2, Board *board, Game *game);
+static int remove_game(Game **gamelist, Game *game);
+
 
 #endif /* guard */
