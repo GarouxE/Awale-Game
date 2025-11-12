@@ -16,9 +16,13 @@ Pull the repository and type `make`
 
 | Command | Action |
 | --- | --- |
-| /challenge [username] | Challenge a user to a game |
-| /help or /h | Help menu with all of the supported commands |
-| /list or /l | Lists all of the available usernames who a currently online |
-| /no | Decline an invitation to a challenge |
-| /talk [username] | Start a chat with a user |
-| /yes | Accept an invitation to a challenge |
+| /accept | Accept an invitation to a challenge |
+| /bio | Modify your bio |
+| /challenge [username] | Challenge a player to a game |
+| /help | Help menu with all of the supported commands |
+| /match | List every ongoing matches |
+| /players | List every usernames of players connected |
+| /t [username] [message]| Start a chat with a user |
+| /whois [username] | Consult a player's bio |
+| /refuse | Decline an invitation to a challenge |
+
