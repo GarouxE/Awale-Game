@@ -227,29 +227,35 @@ static void list_clients(Client *clients, int actual, char* response){
       strncat(response, "\n - ", BUF_SIZE - strlen(response) - 1);
       strncat(response, clients[i].name, BUF_SIZE - strlen(response) - 1);
       strncat(response, clients[i].status==AVAILABLE ? "" : 
-         clients[i].status == IN_GAME ? " (in game)" : " (waiting)",
+         clients[i].status == IN_GAME ? " (in game)" : 
+         clients[i].status == OBSERVING ? " (observing)" : " (waiting)",
          BUF_SIZE - strlen(response) - 1);
    }
 
 }
 
 static void list_games(Game **games, char* response){
-   int i = 0;
+   strncat(response, "Here is the list of ongoing matches:", BUF_SIZE - strlen(response) - 1);
+
    int count = 0;
-   
-   strncat(response, "Here is the list of ongoing matches: ", BUF_SIZE - strlen(response) - 1);
-   for (i = 0; i<MAX_GAMES;i++){
+   for (int i = 0; i < MAX_GAMES; i++) {
       if (games[i] != NULL) {
-         snprintf(response, BUF_SIZE - strlen(response) - 1, "\n - %d : ", i);
+         char temp[128];
+         snprintf(temp, sizeof(temp), "\n - %d : ", i);
+         strncat(response, temp, BUF_SIZE - strlen(response) - 1);
+
          if (games[i]->game_name[0] == '\0') {
-            strncat(response, "[Unnamed game]", BUF_SIZE - strlen(response) - 1);
+               strncat(response, "[Unnamed game]", BUF_SIZE - strlen(response) - 1);
          } else {
-            strncat(response, games[i]->game_name, BUF_SIZE - strlen(response) - 1);
-            count++;
+               strncat(response, games[i]->game_name, BUF_SIZE - strlen(response) - 1);
          }
+         count++;
       }
    }
-   if (count == 0) strncat(response, "\nNo match is currently ongoing. ", BUF_SIZE - strlen(response) - 1); 
+
+   if (count == 0) {
+      strncat(response, "\nNo match is currently ongoing.", BUF_SIZE - strlen(response) - 1);
+   }
 
 }
 
@@ -323,13 +329,15 @@ static void print_board(Board* board, char* buffer, Client player1, Client playe
 static void list_commands(Client* client, char* response) {
    strncat(response, "Here is the list of all commands: \n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /players : to list every usernames of players connected.\n", BUF_SIZE - strlen(response) - 1);
-   strncat(response, "- /matches : to list every ongoing matches.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /games : to list every ongoing games.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /challenge [username] : to challenge a player.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /t [username] [message] : to chat with a player. Use 'all' to talk to every players.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /bio [message] : to modify your bio.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /whois [username] : to consult player's bio.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /accept : to accept a challenge.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /refuse : to refuse a challenge.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /observe [challenge] : to observe ongoing games.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /quit : to quit observer mode.\n", BUF_SIZE - strlen(response) - 1);
 }
 
 static void talk_to(Client* clients, Client* sender, int actual, char* buffer, char* response) {
@@ -452,17 +460,42 @@ static void refuse_challenge(Client* challengee, char* response) {
 }
 
 static void observe_game(Game** games, char* buffer, Client* client, char* response) {
-   int index_game = 0;
-   if (client->status != AVAILABLE) {
+   int index_game;
+   Game* game_observed;
+   if (sscanf(buffer, "/observe %d", &index_game) != 1) {
+      snprintf(response, BUF_SIZE, "[ERROR] Challenge not found.");
+      return;
+   }
+   else if (client->status != AVAILABLE) {
       snprintf(response, BUF_SIZE, "You must be available to observe a challenge.");
       return;
    }
-   Game* game_observed;
-   if (games[index_game] != NULL) {
-      game_observed = games[index_game];
-      game_observed->viewers[game_observed->nb_viewers++] = client; 
+   else if (games[index_game] == NULL) {
+      snprintf(response, BUF_SIZE, "[ERROR] Challenge not found.");
+      return;
    }
+
+   game_observed = games[index_game];
+   game_observed->viewers[game_observed->nb_viewers++] = client; 
+   client->game_location = index_game;
+   client->status = OBSERVING;
    snprintf(response, BUF_SIZE, "You're now observing %s challenge.", game_observed->game_name);
+   
+}
+
+static void quit_game(Game** games, Client* sender, char* response ) {
+   if (sender->status != OBSERVING) {
+      snprintf(response, BUF_SIZE, "[ERROR] You're not currently observing a challenge.");
+      return;
+   }
+   if (games[sender->game_location] == NULL) {
+      snprintf(response, BUF_SIZE, "[ERROR] You're not observing this challenge.");
+      return;
+   }
+   games[sender->game_location]->nb_viewers--;
+   sender->game_location = MAX_GAMES + 1;
+   sender->status = AVAILABLE;
+   snprintf(response, BUF_SIZE, "You've left observer mode.");
 }
 
 int play(Game** games, Client* clients, Client player1, int actual, Client player2, Game* game) {
@@ -653,7 +686,9 @@ static int remove_game(Game **gamelist, Game *game){
       if (gamelist[j] == game) {
          gamelist[j] = NULL;
          if(game->board)free(game->board);
-         if(game->viewers)free(game->viewers);
+         if(game->viewers)
+         for (int i = 0; i < game->nb_viewers; i++) game->viewers[i]->status = AVAILABLE;
+         free(game->viewers);
          free(game);
          break;
       }
@@ -812,6 +847,8 @@ static void treat_command(Game **games, Client *clients, Client* sender, int act
       refuse_challenge(sender, response);
    } else if(!strncmp(buffer, "/observe ", 9)) {
       observe_game(games, buffer, sender, response);
+   } else if (!strcmp(buffer, "/quit")) {
+      quit_game(games, sender, response); 
    } else {
       strcpy(response, "Command not found. Try /help to get the commands list.");
    }

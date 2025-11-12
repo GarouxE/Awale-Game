@@ -71,6 +71,7 @@ static void talk_to(Client* clients, Client* sender, int actual, char* buffer, c
 static void accept_challenge(Game** games, Client* clientList, Client* challengee, char* response, int actual);
 static void refuse_challenge(Client* challengee, char* response);
 static void observe_game(Game** games, char* buffer, Client* client, char* response);
+static void quit_game(Game** games, Client* sender, char* response );
 int play(Game** games, Client* clients, Client player1, int actual, Client player2, Game* game);
 static void print_board(Board* board, char* buffer, Client player1, Client player2);
 static void consult_client(Client *clients, int actual, char*buffer, char* response);

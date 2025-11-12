@@ -18,6 +18,7 @@ typedef struct Client
    Status status;
    struct Client* challenger; //pointer towards challenger
    MessageQueue* queue;
+   int game_location;
 }Client;
 
 
