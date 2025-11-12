@@ -7,7 +7,8 @@
 typedef enum {
    AVAILABLE,
    WAITING,
-   IN_GAME
+   IN_GAME,
+   OBSERVING
 } Status;
 typedef struct Client
 {

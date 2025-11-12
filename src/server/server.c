@@ -240,7 +240,7 @@ static void list_games(Game **games, char* response){
    strncat(response, "Here is the list of ongoing matches: ", BUF_SIZE - strlen(response) - 1);
    for (i = 0; i<MAX_GAMES;i++){
       if (games[i] != NULL) {
-         strncat(response, "\n - ", BUF_SIZE - strlen(response) - 1);
+         snprintf(response, BUF_SIZE - strlen(response) - 1, "\n - %d : ", i);
          if (games[i]->game_name[0] == '\0') {
             strncat(response, "[Unnamed game]", BUF_SIZE - strlen(response) - 1);
          } else {
@@ -424,7 +424,7 @@ void* play_thread(void* arg) {
    Context* args = (Context*)arg;
    play(args->games, args->clients, 
         args->current_game->player1, args->actual, 
-        args->current_game->player2, args->current_game->board);
+        args->current_game->player2, args->current_game);
    // Remettre les joueurs disponibles
    for (int i = 0; i < args->actual; i++) {
       if (args->clients[i].sock == args->current_game->player1.sock ||
@@ -451,7 +451,21 @@ static void refuse_challenge(Client* challengee, char* response) {
    snprintf(response, BUF_SIZE, "You've declined %s's challenge.", challenger->name);
 }
 
-int play(Game** games, Client* clients, Client player1, int actual, Client player2, Board* board) {
+static void observe_game(Game** games, char* buffer, Client* client, char* response) {
+   int index_game = 0;
+   if (client->status != AVAILABLE) {
+      snprintf(response, BUF_SIZE, "You must be available to observe a challenge.");
+      return;
+   }
+   Game* game_observed;
+   if (games[index_game] != NULL) {
+      game_observed = games[index_game];
+      game_observed->viewers[game_observed->nb_viewers++] = client; 
+   }
+   snprintf(response, BUF_SIZE, "You're now observing %s challenge.", game_observed->game_name);
+}
+
+int play(Game** games, Client* clients, Client player1, int actual, Client player2, Game* game) {
    char buffer[BUF_SIZE];
 
    snprintf(buffer, sizeof(buffer), "Game launching...!\n");
@@ -460,10 +474,8 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
    printf("Game launching...\n");
 
    // Create the board
-   /* Board* board = create_board();
-   if (!board) {
-      return -1;  // Exit if board creation failed
-   } */
+   Board* board = game->board;
+
    int clockwise = rand() % 2;
    choose_clockwise(board, clockwise);
    char* orientation = clockwise ? "clockwise" : "counterclockwise";
@@ -480,10 +492,18 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
       print_board(board, buffer, player1, player2);
       write_client(player1.sock, buffer);
       write_client(player2.sock, buffer);
+      for (int i=0; i<game->nb_viewers; i++) {
+         Client* client = game->viewers[i];
+         write_client(client->sock, buffer);
+      }
 
       snprintf(buffer, sizeof(buffer), ">>> [Round %d] It's %s turn ! (%s) <<<\n", board->round+1, actual_player->name, orientation); 
       write_client(player1.sock, buffer);
       write_client(player2.sock, buffer);
+      for (int i=0; i<game->nb_viewers; i++) {
+         Client* client = game->viewers[i];
+         write_client(client->sock, buffer);
+      }
 
       snprintf(buffer, sizeof(buffer), "\nEnter your move"); 
       write_client(actual_player->sock, buffer);
@@ -557,7 +577,11 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
    snprintf(buffer, sizeof(buffer), "Player 1 captures: %d", board->player1_captures);
    snprintf(buffer, sizeof(buffer), "Player 2 captures: %d", board->player2_captures);
    write_client(player1.sock, buffer);
-   write_client(player2.sock, buffer);
+   write_client(player2.sock, buffer); 
+   for (int i=0; i<game->nb_viewers; i++) {
+      Client* client = game->viewers[i];
+      write_client(client->sock, buffer);
+   }
    
 
    if (board->player1_captures > board->player2_captures) {
@@ -569,6 +593,10 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
    }
    write_client(player1.sock, buffer);
    write_client(player2.sock, buffer);
+   for (int i=0; i<game->nb_viewers; i++) {
+      Client* client = game->viewers[i];
+      write_client(client->sock, buffer);
+   }
 
    return 0;
 
@@ -625,6 +653,7 @@ static int remove_game(Game **gamelist, Game *game){
       if (gamelist[j] == game) {
          gamelist[j] = NULL;
          if(game->board)free(game->board);
+         if(game->viewers)free(game->viewers);
          free(game);
          break;
       }
@@ -781,6 +810,8 @@ static void treat_command(Game **games, Client *clients, Client* sender, int act
       accept_challenge(games, clients, sender, response, actual);
    } else if (!strcmp(buffer, "/refuse")) {
       refuse_challenge(sender, response);
+   } else if(!strncmp(buffer, "/observe ", 9)) {
+      observe_game(games, buffer, sender, response);
    } else {
       strcpy(response, "Command not found. Try /help to get the commands list.");
    }

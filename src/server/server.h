@@ -33,6 +33,7 @@ typedef struct in_addr IN_ADDR;
 #define MAX_CLIENTS     100
 #define MAX_GAMES       100
 #define BUF_SIZE    1024
+#define BUF_VIEWERS 10
 
 #include "client.h"
 #include "../game/game.h" 
@@ -42,6 +43,8 @@ typedef struct {
    Client player1;
    Client player2;
    char game_name[BUF_SIZE];
+   Client *viewers[BUF_VIEWERS];
+   int nb_viewers;
 } Game;
 typedef struct {
    Game** games;
@@ -67,7 +70,8 @@ static void list_commands(Client* client, char* response);
 static void talk_to(Client* clients, Client* sender, int actual, char* buffer, char* response);
 static void accept_challenge(Game** games, Client* clientList, Client* challengee, char* response, int actual);
 static void refuse_challenge(Client* challengee, char* response);
-int play(Game** games, Client* clients, Client player1, int actual, Client player2, Board* board);
+static void observe_game(Game** games, char* buffer, Client* client, char* response);
+int play(Game** games, Client* clients, Client player1, int actual, Client player2, Game* game);
 static void print_board(Board* board, char* buffer, Client player1, Client player2);
 static void consult_client(Client *clients, int actual, char*buffer, char* response);
 static void remove_client(Client *clients, int to_remove, int *actual); 
