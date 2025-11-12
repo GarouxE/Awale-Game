@@ -227,29 +227,35 @@ static void list_clients(Client *clients, int actual, char* response){
       strncat(response, "\n - ", BUF_SIZE - strlen(response) - 1);
       strncat(response, clients[i].name, BUF_SIZE - strlen(response) - 1);
       strncat(response, clients[i].status==AVAILABLE ? "" : 
-         clients[i].status == IN_GAME ? " (in game)" : " (waiting)",
+         clients[i].status == IN_GAME ? " (in game)" : 
+         clients[i].status == OBSERVING ? " (observing)" : " (waiting)",
          BUF_SIZE - strlen(response) - 1);
    }
 
 }
 
 static void list_games(Game **games, char* response){
-   int i = 0;
+   strncat(response, "Here is the list of ongoing matches:", BUF_SIZE - strlen(response) - 1);
+
    int count = 0;
-   
-   strncat(response, "Here is the list of ongoing matches: ", BUF_SIZE - strlen(response) - 1);
-   for (i = 0; i<MAX_GAMES;i++){
+   for (int i = 0; i < MAX_GAMES; i++) {
       if (games[i] != NULL) {
-         strncat(response, "\n - ", BUF_SIZE - strlen(response) - 1);
+         char temp[128];
+         snprintf(temp, sizeof(temp), "\n - %d : ", i);
+         strncat(response, temp, BUF_SIZE - strlen(response) - 1);
+
          if (games[i]->game_name[0] == '\0') {
-            strncat(response, "[Unnamed game]", BUF_SIZE - strlen(response) - 1);
+               strncat(response, "[Unnamed game]", BUF_SIZE - strlen(response) - 1);
          } else {
-            strncat(response, games[i]->game_name, BUF_SIZE - strlen(response) - 1);
-            count++;
+               strncat(response, games[i]->game_name, BUF_SIZE - strlen(response) - 1);
          }
+         count++;
       }
    }
-   if (count == 0) strncat(response, "\nNo match is currently ongoing. ", BUF_SIZE - strlen(response) - 1); 
+
+   if (count == 0) {
+      strncat(response, "\nNo match is currently ongoing.", BUF_SIZE - strlen(response) - 1);
+   }
 
 }
 
@@ -323,13 +329,15 @@ static void print_board(Board* board, char* buffer, Client player1, Client playe
 static void list_commands(Client* client, char* response) {
    strncat(response, "Here is the list of all commands: \n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /players : to list every usernames of players connected.\n", BUF_SIZE - strlen(response) - 1);
-   strncat(response, "- /matches : to list every ongoing matches.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /games : to list every ongoing games.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /challenge [username] : to challenge a player.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /t [username] [message] : to chat with a player. Use 'all' to talk to every players.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /bio [message] : to modify your bio.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /whois [username] : to consult player's bio.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /accept : to accept a challenge.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /refuse : to refuse a challenge.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /observe [challenge] : to observe ongoing games.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /quit : to quit observer mode.\n", BUF_SIZE - strlen(response) - 1);
 }
 
 static void talk_to(Client* clients, Client* sender, int actual, char* buffer, char* response) {
@@ -424,7 +432,7 @@ void* play_thread(void* arg) {
    Context* args = (Context*)arg;
    play(args->games, args->clients, 
         args->current_game->player1, args->actual, 
-        args->current_game->player2, args->current_game->board);
+        args->current_game->player2, args->current_game);
    // Remettre les joueurs disponibles
    for (int i = 0; i < args->actual; i++) {
       if (args->clients[i].sock == args->current_game->player1.sock ||
@@ -451,7 +459,46 @@ static void refuse_challenge(Client* challengee, char* response) {
    snprintf(response, BUF_SIZE, "You've declined %s's challenge.", challenger->name);
 }
 
-int play(Game** games, Client* clients, Client player1, int actual, Client player2, Board* board) {
+static void observe_game(Game** games, char* buffer, Client* client, char* response) {
+   int index_game;
+   Game* game_observed;
+   if (sscanf(buffer, "/observe %d", &index_game) != 1) {
+      snprintf(response, BUF_SIZE, "[ERROR] Challenge not found.");
+      return;
+   }
+   else if (client->status != AVAILABLE) {
+      snprintf(response, BUF_SIZE, "You must be available to observe a challenge.");
+      return;
+   }
+   else if (games[index_game] == NULL) {
+      snprintf(response, BUF_SIZE, "[ERROR] Challenge not found.");
+      return;
+   }
+
+   game_observed = games[index_game];
+   game_observed->viewers[game_observed->nb_viewers++] = client; 
+   client->game_location = index_game;
+   client->status = OBSERVING;
+   snprintf(response, BUF_SIZE, "You're now observing %s challenge.", game_observed->game_name);
+   
+}
+
+static void quit_game(Game** games, Client* sender, char* response ) {
+   if (sender->status != OBSERVING) {
+      snprintf(response, BUF_SIZE, "[ERROR] You're not currently observing a challenge.");
+      return;
+   }
+   if (games[sender->game_location] == NULL) {
+      snprintf(response, BUF_SIZE, "[ERROR] You're not observing this challenge.");
+      return;
+   }
+   games[sender->game_location]->nb_viewers--;
+   sender->game_location = MAX_GAMES + 1;
+   sender->status = AVAILABLE;
+   snprintf(response, BUF_SIZE, "You've left observer mode.");
+}
+
+int play(Game** games, Client* clients, Client player1, int actual, Client player2, Game* game) {
    char buffer[BUF_SIZE];
 
    snprintf(buffer, sizeof(buffer), "Game launching...!\n");
@@ -460,10 +507,8 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
    printf("Game launching...\n");
 
    // Create the board
-   /* Board* board = create_board();
-   if (!board) {
-      return -1;  // Exit if board creation failed
-   } */
+   Board* board = game->board;
+
    int clockwise = rand() % 2;
    choose_clockwise(board, clockwise);
    char* orientation = clockwise ? "clockwise" : "counterclockwise";
@@ -480,10 +525,18 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
       print_board(board, buffer, player1, player2);
       write_client(player1.sock, buffer);
       write_client(player2.sock, buffer);
+      for (int i=0; i<game->nb_viewers; i++) {
+         Client* client = game->viewers[i];
+         write_client(client->sock, buffer);
+      }
 
       snprintf(buffer, sizeof(buffer), ">>> [Round %d] It's %s turn ! (%s) <<<\n", board->round+1, actual_player->name, orientation); 
       write_client(player1.sock, buffer);
       write_client(player2.sock, buffer);
+      for (int i=0; i<game->nb_viewers; i++) {
+         Client* client = game->viewers[i];
+         write_client(client->sock, buffer);
+      }
 
       snprintf(buffer, sizeof(buffer), "\nEnter your move"); 
       write_client(actual_player->sock, buffer);
@@ -557,7 +610,11 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
    snprintf(buffer, sizeof(buffer), "Player 1 captures: %d", board->player1_captures);
    snprintf(buffer, sizeof(buffer), "Player 2 captures: %d", board->player2_captures);
    write_client(player1.sock, buffer);
-   write_client(player2.sock, buffer);
+   write_client(player2.sock, buffer); 
+   for (int i=0; i<game->nb_viewers; i++) {
+      Client* client = game->viewers[i];
+      write_client(client->sock, buffer);
+   }
    
 
    if (board->player1_captures > board->player2_captures) {
@@ -569,6 +626,10 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
    }
    write_client(player1.sock, buffer);
    write_client(player2.sock, buffer);
+   for (int i=0; i<game->nb_viewers; i++) {
+      Client* client = game->viewers[i];
+      write_client(client->sock, buffer);
+   }
 
    return 0;
 
@@ -625,6 +686,9 @@ static int remove_game(Game **gamelist, Game *game){
       if (gamelist[j] == game) {
          gamelist[j] = NULL;
          if(game->board)free(game->board);
+         if(game->viewers)
+         for (int i = 0; i < game->nb_viewers; i++) game->viewers[i]->status = AVAILABLE;
+         free(game->viewers);
          free(game);
          break;
       }
@@ -781,6 +845,10 @@ static void treat_command(Game **games, Client *clients, Client* sender, int act
       accept_challenge(games, clients, sender, response, actual);
    } else if (!strcmp(buffer, "/refuse")) {
       refuse_challenge(sender, response);
+   } else if(!strncmp(buffer, "/observe ", 9)) {
+      observe_game(games, buffer, sender, response);
+   } else if (!strcmp(buffer, "/quit")) {
+      quit_game(games, sender, response); 
    } else {
       strcpy(response, "Command not found. Try /help to get the commands list.");
    }

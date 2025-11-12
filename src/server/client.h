@@ -7,7 +7,8 @@
 typedef enum {
    AVAILABLE,
    WAITING,
-   IN_GAME
+   IN_GAME,
+   OBSERVING
 } Status;
 typedef struct Client
 {
@@ -17,6 +18,7 @@ typedef struct Client
    Status status;
    struct Client* challenger; //pointer towards challenger
    MessageQueue* queue;
+   int game_location;
 }Client;
 
 
