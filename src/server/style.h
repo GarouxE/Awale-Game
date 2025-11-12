@@ -1,0 +1,15 @@
+#define RESET   "\033[0m"
+#define BOLD    "\033[1m"
+#define ITALIC    "\033[3m"
+#define UNDERLINE "\033[4m"
+#define CLEAR   "\033[2J\033[H"
+
+#define RED     "\033[31m"
+#define GREEN   "\033[32m"
+#define YELLOW  "\033[33m"
+#define BLUE    "\033[34m"
+
+#define UP      "\033[nA"
+#define DOWN    "\033[nB"
+#define RIGHT   "\033[nC"
+#define LEFT    "\033[nD"

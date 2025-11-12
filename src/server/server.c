@@ -6,6 +6,7 @@
 
 #include "server.h"
 #include "../game/game.h"
+#include "style.h"
 
 static void init(void)
 {
@@ -105,7 +106,7 @@ static void app(void)
 
          clients[actual] = c;
          actual++;
-         printf("%s has joined.\n", c.name);
+         printf(YELLOW"%s has joined.\n"RESET, c.name);
       }
       else
       {
@@ -122,9 +123,8 @@ static void app(void)
                {
                   closesocket(clients[i].sock);
                   remove_client(clients, i, &actual);
-                  strncpy(buffer, client->name, BUF_SIZE - 1);
-                  strncat(buffer, " has left.", BUF_SIZE - strlen(buffer) - 1);
-                  printf("%s has left.\n", client->name);
+                  snprintf(buffer, BUF_SIZE - strlen(buffer) - 1, YELLOW"%s has left."RESET, client->name );
+                  printf(YELLOW"%s has left.\n"RESET, client->name);
                   send_message_to_all_clients(clients, *client, actual, buffer, 1);
                }
                else {
@@ -172,12 +172,12 @@ static int challenge_player(Client *clientList, Client* client, int actual, char
 
    if (client->status != AVAILABLE ) {
       snprintf(message, sizeof(message),
-               "[ERROR] Answer to your last challenge invitation or end your current match");
+               RED"[ERROR] Answer to your last challenge invitation or end your current match"RESET);
       write_client(client->sock, message);
       return -1;
    } else if (!strcmp(client->name, username)) {
       snprintf(message, sizeof(message),
-               "[ERROR] You cannot challenge yourself");
+               RED"[ERROR] You cannot challenge yourself"RESET);
       write_client(client->sock, message);
       return -1;
    }
@@ -192,12 +192,12 @@ static int challenge_player(Client *clientList, Client* client, int actual, char
 
    if (challengee == NULL) {
       snprintf(message, sizeof(message),
-               "[ERROR] user not found");
+               RED"[ERROR] user not found"RESET);
       write_client(client->sock, message);
       return -1;
    } else if (challengee->status != AVAILABLE) {
       snprintf(message, sizeof(message),
-               "[ERROR] user not available");
+               RED"[ERROR] user not available"RESET);
       write_client(client->sock, message);
       return -1;
    }
@@ -238,13 +238,13 @@ static void modify_bio(Client* sender, char* buffer, char* response) {
 
    if (!strcmp(new_bio,"")) {
       snprintf(response, BUF_SIZE - strlen(response) - 1,
-               "[ERROR] new bio should not be empty ");
+               RED"[ERROR] new bio should not be empty "RESET);
       return;
    }
 
    strncpy(sender->bio, new_bio, BUF_SIZE - 1);
    sender->bio[BUF_SIZE - 1] = '\0';
-   strcpy(response, "[SUCCESS] Votre bio a été mise à jour.");
+   strcpy(response, GREEN"[SUCCESS] Votre bio a été mise à jour."RESET);
       
 }
 
@@ -266,7 +266,7 @@ static void consult_client(Client *clients, int actual, char*buffer, char* respo
       }
    }
    if (!found) {
-      strcpy(response, "[ERROR] User not found.");
+      strcpy(response, RED"[ERROR] User not found."RESET);
    }
 }
 
@@ -275,7 +275,7 @@ static void print_board(Board* board, char* buffer, Client player1, Client playe
    buffer[0] = '\0';
 
    snprintf(buffer + strlen(buffer), BUF_SIZE - strlen(buffer),
-      "\n========== GAME BOARD ==========\n"
+      "\n┌────── GAME BOARD ──────┐\n"
       "          %s (P1)\n\n"
       "    A   B   C   D   E   F\n"
       "   (%d) (%d) (%d) (%d) (%d) (%d)\n"
@@ -285,7 +285,7 @@ static void print_board(Board* board, char* buffer, Client player1, Client playe
       "Captures:\n"
       "  %s: %d\n"
       "  %s: %d\n"
-      "================================\n",
+      "└─────────────────────────┘\n",
       player1.name,
       board->board[0], board->board[1], board->board[2],
       board->board[3], board->board[4], board->board[5],
@@ -322,7 +322,7 @@ static void talk_to(Client* clients, Client* sender, int actual, char* buffer, c
       for (int i = 0; i<actual; i++) {
          if (!strcmp(clients[i].name, username)) {
             const char buffer[BUF_SIZE];
-            snprintf(buffer, BUF_SIZE - strlen(buffer) - 1, "%s whispered to you : %s", sender->name, message);
+            snprintf(buffer, BUF_SIZE - strlen(buffer) - 1, ITALIC"%s whispered to you : %s"RESET, sender->name, message);
             write_client(clients[i].sock, buffer);
             found = 1;
             break;
@@ -332,7 +332,7 @@ static void talk_to(Client* clients, Client* sender, int actual, char* buffer, c
    if (found) {   
       snprintf(response, BUF_SIZE - strlen(response) - 1, "You've send to %s : %s", username, message );
    } else {
-      snprintf(response, BUF_SIZE - strlen(response) - 1, "[ERROR] User not found." );
+      snprintf(response, BUF_SIZE - strlen(response) - 1, RED"[ERROR] User not found."RESET );
    }
 }
 

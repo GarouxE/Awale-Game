@@ -17,7 +17,7 @@ GAME_SRC   = $(SRC_DIR)/game/game.c
 
 # Headers
 CLIENT_HEADERS = $(SRC_DIR)/client/client.h
-SERVER_HEADERS = $(SRC_DIR)/server/server.h $(SRC_DIR)/server/client.h $(SRC_DIR)/server/message.h $(SRC_DIR)/game/game.h
+SERVER_HEADERS = $(SRC_DIR)/server/server.h $(SRC_DIR)/server/client.h $(SRC_DIR)/server/message.h $(SRC_DIR)/server/style.h $(SRC_DIR)/game/game.h
 GAME_HEADERS   = $(SRC_DIR)/game/game.h
 
 # Objects
