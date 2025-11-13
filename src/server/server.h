@@ -47,6 +47,7 @@ typedef struct {
    int nb_viewers;
    int is_private;          //1 if private, 0 if public
    int in_progress;        //1 if yes, 0 if no
+   int recorded;           //1 if yes, O if no
 } Game;
 
 typedef struct {
@@ -87,6 +88,8 @@ static int save_game(Client *player1, Client *player2, Board *board, Game *game)
 static int remove_game(Game **gamelist, Game *game);
 static void add_viewers(Game **games, Client *clients, int actual, const char *buffer, Client *sender);
 static int create_private_game(Client *clientList, Client* client, int actual, char *buffer);
-
+static void change_saving_game_status(Game **games, Client *sender);
+static void view_saved_games(Game **games, char *response, Client *sender);
+static void review_game(Game** games, char* buffer, Client* client, char* response);
 
 #endif /* guard */

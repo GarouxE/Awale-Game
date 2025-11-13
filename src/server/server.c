@@ -713,7 +713,7 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
    char* orientation = clockwise ? "clockwise" : "counterclockwise";
 
    // Game loop
-   while (!game_over(board)) {
+   while (!game_over(board) && game->in_progress) {
       int num_player = board->round % 2;  // Determine which player's turn
       Client* actual_player = (num_player == 0) ? &player1 : &player2;
       Client* opponent = (num_player == 0) ? &player2 : &player1;
@@ -794,6 +794,7 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
          case -2: snprintf(buffer, BUF_SIZE, "Invalid position!"); break;
          case -3: snprintf(buffer, BUF_SIZE, "Empty cell!"); break;
          case -4: snprintf(buffer, BUF_SIZE, "Not valid for clockwise."); break;
+         case -6: game->in_progress = 0;
          default: turn = 0; break;
       }
       if(turn < 0) {
@@ -815,8 +816,10 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
       write_client(client->sock, buffer);
    }
    
-
-   if (board->player1_captures > board->player2_captures) {
+   if(game->in_progress == 0){
+      snprintf(buffer, sizeof(buffer), "\nPlayer %d surrenders!\n",board->round%2 +1);
+   } 
+   else if (board->player1_captures > board->player2_captures) {
       snprintf(buffer, sizeof(buffer), "Player 1 wins!");
    } else if (board->player2_captures > board->player1_captures) {
       snprintf(buffer, sizeof(buffer), "Player 2 wins!");
@@ -866,6 +869,7 @@ static int create_game(Client *player1, Client *player2, Game **gamelist, Board 
    new_game->board = board;
    new_game->is_private = type;
    new_game->in_progress = 1;
+   new_game->recorded = 0;
    if(available_pos == -1){
       free(new_game);
       return -2;
@@ -883,11 +887,15 @@ static int save_game(Client *player1, Client *player2, Board *board, Game *game)
 
 static int remove_game(Game **gamelist, Game *game){
    for (int j = 0; j < MAX_GAMES; j++) {
-      if (gamelist[j] == game) {
+      if (gamelist[j] == game && gamelist[j]->recorded == 0) {
          gamelist[j] = NULL;
          if (game->board) free(game->board);
          for (int i = 0; i < game->nb_viewers; i++) game->viewers[i]->status = AVAILABLE;
          free(game);
+         break;
+      }
+      else if (gamelist[j] == game && gamelist[j]->recorded == 1)  {
+         gamelist[j]->in_progress = 0;
          break;
       }
    }
@@ -1020,6 +1028,126 @@ static void parse_command(const char *buffer, char *username, char *message, int
    }
 }
 
+static void change_saving_game_status(Game **games, Client *sender){
+    int loc = sender->game_location;
+
+    // Try to find the sender's active game if location is invalid
+    if (loc < 0 || games[loc] == NULL || games[loc]->in_progress != 1) {
+        for (int i = 0; i < MAX_GAMES; i++) {
+            if (games[i] && games[i]->in_progress == 1 &&
+               (games[i]->player1.sock == sender->sock || games[i]->player2.sock == sender->sock)) {
+                loc = i;
+                break;
+            }
+        }
+    }
+
+    if (loc < 0 || games[loc] == NULL || games[loc]->in_progress != 1) {
+        write_client(sender->sock, "You are not in an active game.");
+        return;
+    }
+
+    Game* game = games[loc];
+    game->recorded = 1;
+    write_client(sender->sock, "Game will be saved when it finishes.");
+}
+
+
+static void view_saved_games(Game **games, char *response, Client *sender) {
+    response[0] = '\0'; 
+    char buffer[BUF_SIZE];
+
+    int found = 0;
+    for (int i = 0; i < MAX_GAMES; i++) {
+        if (games[i] != NULL) {
+            Game *game = games[i];
+            if ((game->player1.sock == sender->sock || game->player2.sock == sender->sock) &&
+                game->in_progress == 0) {
+                
+                snprintf(buffer, sizeof(buffer), "-%d: %s\n",i ,game->game_name);
+                strncat(response, buffer, BUF_SIZE - strlen(response) - 1);
+                found = 1;
+            }
+        }
+    }
+
+    if (!found) {
+        snprintf(response, BUF_SIZE, "No saved games found for you.\n");
+    }
+}
+
+static void review_game(Game** games, char* buffer, Client* client, char* response) {
+    int index_game;
+    Game* game_review;
+
+    // Parse the command: expect something like "/review 2"
+    if (sscanf(buffer, "/review %d", &index_game) != 1) {
+        snprintf(response, BUF_SIZE, "[ERROR] Game not found.");
+        return;
+    }
+
+    // Check availability and ownership
+    if (client->status != AVAILABLE) {
+        snprintf(response, BUF_SIZE, "You must be available to review a game.");
+        return;
+    }
+    if (index_game < 0 || index_game >= MAX_GAMES || games[index_game] == NULL) {
+        snprintf(response, BUF_SIZE, "[ERROR] Game not found.");
+        return;
+    }
+    if (games[index_game]->player1.sock != client->sock &&
+        games[index_game]->player2.sock != client->sock) {
+        snprintf(response, BUF_SIZE, "[ERROR] You were not a player in this game.");
+        return;
+    }
+
+    // Check if the game has a history
+    game_review = games[index_game];
+    if (game_review->board == NULL || game_review->board->history_size <= 0) {
+        snprintf(response, BUF_SIZE, "[ERROR] No history available for this game.");
+        return;
+    }
+
+    snprintf(response, BUF_SIZE, "Replaying saved game: %s\n", game_review->game_name);
+    write_client(client->sock, response);
+
+    // Replay each recorded board state
+    for (int i = 0; i < game_review->board->history_size; i++) {
+        char frame[BUF_SIZE];
+        frame[0] = '\0';
+
+        snprintf(frame + strlen(frame), BUF_SIZE - strlen(frame),
+            "\n========== GAME BOARD (Round %d) ==========\n"
+            "          %s (P1)\n\n"
+            "    A   B   C   D   E   F\n"
+            "   (%d) (%d) (%d) (%d) (%d) (%d)\n"
+            "   (%d) (%d) (%d) (%d) (%d) (%d)\n"
+            "    a   b   c   d   e   f\n\n"
+            "          %s (P2)\n\n"
+            "Captures:\n"
+            "  %s: %d\n"
+            "  %s: %d\n"
+            "Move played: %s\n"
+            "================================\n",
+            i + 1,
+            game_review->player1.name,
+            game_review->board->history[i].board[0], game_review->board->history[i].board[1], game_review->board->history[i].board[2],
+            game_review->board->history[i].board[3], game_review->board->history[i].board[4], game_review->board->history[i].board[5],
+            game_review->board->history[i].board[6], game_review->board->history[i].board[7], game_review->board->history[i].board[8],
+            game_review->board->history[i].board[9], game_review->board->history[i].board[10], game_review->board->history[i].board[11],
+            game_review->player2.name,
+            game_review->player1.name, game_review->board->history[i].player1_captures,
+            game_review->player2.name, game_review->board->history[i].player2_captures,
+            game_review->board->history[i].move
+        );
+
+        write_client(client->sock, frame);
+    }
+
+    snprintf(response, BUF_SIZE, "\n[INFO] Review of '%s' completed.\n", game_review->game_name);
+    return;
+}
+
 
 static void treat_command(Game **games, Client *clients, Client* sender, int actual, const char *buffer, int in_game) {
    
@@ -1029,6 +1157,8 @@ static void treat_command(Game **games, Client *clients, Client* sender, int act
       list_clients(clients, actual, response);  
    } else if (!strcmp(buffer, "/games")) {
       list_games(games, response,sender);     
+   } else if (!strcmp(buffer, "/history")) {
+      view_saved_games(games,response,sender);     
    } else if (!strcmp(buffer, "/help")) {
       list_commands(sender, response);
    } else if (!strncmp(buffer, "/challenge ", 11)) {
@@ -1051,6 +1181,10 @@ static void treat_command(Game **games, Client *clients, Client* sender, int act
       add_viewers(games, clients, actual, buffer, sender);
    }else if(!strncmp(buffer, "/observe ", 9)) {
       observe_game(games, buffer, sender, response);
+   } else if(!strncmp(buffer, "/review ", 8)) {
+      review_game(games, buffer, sender, response);
+   } else if(!strncmp(buffer, "/save",6)) {
+      change_saving_game_status(games, sender);
    } else if (!strcmp(buffer, "/quit")) {
       quit_game(games, sender, response); 
    } else {

@@ -443,7 +443,12 @@ void print_history(Board* board, char* player1_name, char* player2_name){
 // Execute a player's turn (distribute pebbles, handle capture, and update player/round)
 int player_turn(Board* board, int place) {
     int player = board->round % 2;
-
+    if (('A' + place) == 'S' || ('a' + place) == 's') {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "\nPlayer %d surrendered\n", player + 1);
+        save_history(board, msg);
+        return -6;
+    }
     // Check player validity (can play, valid move, and valid clockwise direction)
     int pass = check_player_validity(board, place, player);
     if (pass != 1) return pass;

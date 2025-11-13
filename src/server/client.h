@@ -13,6 +13,7 @@ typedef enum {
    OBSERVING
 } Status;
 
+
 typedef struct Client
 {
    SOCKET sock;

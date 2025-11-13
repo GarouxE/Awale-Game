@@ -22,6 +22,7 @@
         "slist": "c",
         "initializer_list": "c",
         "message.h": "c",
-        "typeinfo": "c"
+        "typeinfo": "c",
+        "typeindex": "c"
     }
 }
