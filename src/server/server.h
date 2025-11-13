@@ -60,7 +60,7 @@ static int init_connection(void);
 static void end_connection(int sock);
 void* play_thread(void* arg);
 static int read_client(SOCKET sock, char *buffer);
-static void write_client(SOCKET sock, const char *buffer);
+void write_client(SOCKET sock, const char *buffer);
 static void send_message_to_all_clients(Client *clients, Client client, int actual, const char *buffer, char from_server);
 static void list_clients(Client *clients, int actual, char* response);
 static void list_games(Game **games, char* response);
@@ -80,7 +80,7 @@ static void clear_clients(Client *clients, int actual);
 static void parse_command(const char *buffer, char* username, char* message, int username_bool, int message_bool);
 static void treat_command(Game **games, Client *clients, Client* client, int actual, const char *buffer, int in_game);
 static int create_game(Client *player1, Client *player2, Game **gamelist, Board *board, Game *new_game);
-int save_game(Client *player1, Client *player2, Board *board, Game *game);
+static int save_game(Client *player1, Client *player2, Board *board, Game *game);
 static int remove_game(Game **gamelist, Game *game);
 
 
