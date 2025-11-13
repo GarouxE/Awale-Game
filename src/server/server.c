@@ -709,32 +709,8 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
    Board* board = game->board;
 
    int clockwise = rand() % 2;
+   choose_clockwise(board, clockwise);
    char* orientation = clockwise ? "clockwise" : "counterclockwise";
-   while(1){
-         snprintf(buffer, sizeof(buffer), "\nChoose an orientation 1 for clockwise and 0 for counterclockwise.\n"); 
-         write_client(player1.sock, buffer);
-         int has_player_msg;
-         Message player_msg = queue_try_pop(player1.queue, &has_player_msg);
-         
-         if (has_player_msg) {
-            if (player_msg.content[0] == '/') {
-               // Commande du joueur actuel
-               printf("Commande du joueur actuel %s : %s\n", player1.name, player_msg.content);
-               treat_command(games, clients, player1, actual, player_msg.content, 1);
-            } else if (strlen(player_msg.content) == 1) {
-               // C'est un coup !
-               place_char = player_msg.content[0];
-               place = letter_to_int(place_char);
-               valid_move = 1;
-               
-            } else {
-               // Message invalide
-               snprintf(buffer, sizeof(buffer), "Invalid input. Enter a letter (a-f) or a command (/help)");
-               write_client(actual_player->sock, buffer);
-            }
-         }
-      }
-      choose_clockwise(board, clockwise);
 
    // Game loop
    while (!game_over(board) && game->in_progress) {
