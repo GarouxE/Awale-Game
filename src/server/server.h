@@ -70,7 +70,7 @@ static void list_commands(Client* client, char* response);
 static void talk_to(Client* clients, Client* sender, int actual, char* buffer, char* response);
 static void accept_challenge(Game** games, Client* clientList, Client* challengee, char* response, int actual);
 static void refuse_challenge(Client* challengee, char* response);
-static void observe_game(Game** games, char* buffer, Client* client, char* response);
+static void observe_game(Game** games, Client* clients, int actual, char* buffer, Client* client, char* response);
 static void quit_game(Game** games, Client* sender, char* response );
 int play(Game** games, Client* clients, Client player1, int actual, Client player2, Game* game);
 static void print_board(Board* board, char* buffer, Client player1, Client player2);
@@ -80,7 +80,7 @@ static void clear_clients(Client *clients, int actual);
 static void parse_command(const char *buffer, char* username, char* message, int username_bool, int message_bool);
 static void treat_command(Game **games, Client *clients, Client* client, int actual, const char *buffer, int in_game);
 static int create_game(Client *player1, Client *player2, Game **gamelist, Board *board, Game *new_game);
-static int save_game(Client *player1, Client *player2, Board *board, Game *game);
+int save_game(Client *player1, Client *player2, Board *board, Game *game);
 static int remove_game(Game **gamelist, Game *game);
 
 
