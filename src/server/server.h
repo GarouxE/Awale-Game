@@ -45,7 +45,10 @@ typedef struct {
    char game_name[BUF_SIZE];
    Client *viewers[BUF_VIEWERS];
    int nb_viewers;
+   int is_private;          //1 if private, 0 if public
+   int in_progress;        //1 if yes, 0 if no
 } Game;
+
 typedef struct {
    Game** games;
    Client* clients;
@@ -63,7 +66,7 @@ static int read_client(SOCKET sock, char *buffer);
 static void write_client(SOCKET sock, const char *buffer);
 static void send_message_to_all_clients(Client *clients, Client client, int actual, const char *buffer, char from_server);
 static void list_clients(Client *clients, int actual, char* response);
-static void list_games(Game **games, char* response);
+static void list_games(Game **games, char* response, Client* sender);
 static void modify_bio(Client* sender, char* buffer, char* response);
 static int challenge_player(Client *clientList, Client* client, int actual, char *buffer);
 static void list_commands(Client* client, char* response);
@@ -79,9 +82,11 @@ static void remove_client(Client *clients, int to_remove, int *actual);
 static void clear_clients(Client *clients, int actual);
 static void parse_command(const char *buffer, char* username, char* message, int username_bool, int message_bool);
 static void treat_command(Game **games, Client *clients, Client* client, int actual, const char *buffer, int in_game);
-static int create_game(Client *player1, Client *player2, Game **gamelist, Board *board, Game *new_game);
+static int create_game(Client *player1, Client *player2, Game **gamelist, Board *board, Game *new_game, int type);
 static int save_game(Client *player1, Client *player2, Board *board, Game *game);
 static int remove_game(Game **gamelist, Game *game);
+static void add_viewers(Game **games, Client *clients, int actual, const char *buffer, Client *sender);
+static int create_private_game(Client *clientList, Client* client, int actual, char *buffer);
 
 
 #endif /* guard */

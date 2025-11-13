@@ -7,9 +7,12 @@
 typedef enum {
    AVAILABLE,
    WAITING,
+   WAITING_PRIVATE,
+   WAITING_PUBLIC,
    IN_GAME,
    OBSERVING
 } Status;
+
 typedef struct Client
 {
    SOCKET sock;

@@ -204,20 +204,71 @@ static int challenge_player(Client *clientList, Client* client, int actual, char
       return -1;
    }
 
-   snprintf(message, sizeof(message),"You've challenged %s !", challengee->name);
+   snprintf(message, sizeof(message),"You've challenged %s to a public game!", challengee->name);
    write_client(client->sock, message);
    
    // Ask the target player if they accept the challenge
    snprintf(message, sizeof(message),"%s has challenged you! Do you accept? Type '/accept' or '/refuse'.", client->name);
    write_client(challengee->sock, message);
 
-   challengee->status = WAITING;
-   client->status = WAITING;
+   challengee->status = WAITING_PUBLIC;
+   client->status = WAITING_PUBLIC;
    challengee->challenger = client;
 
    return 0;
 }
 
+static int create_private_game(Client *clientList, Client* client, int actual, char *buffer) {
+   char username[BUF_SIZE]; 
+   char message[BUF_SIZE];
+   parse_command(buffer, username, message, 1, 0);
+   buffer[0] = '\0';
+
+   if (client->status != AVAILABLE ) {
+      snprintf(message, sizeof(message),
+               "[ERROR] Answer to your last challenge invitation or end your current match");
+      write_client(client->sock, message);
+      return -1;
+   } else if (!strcmp(client->name, username)) {
+      snprintf(message, sizeof(message),
+               "[ERROR] You cannot challenge yourself");
+      write_client(client->sock, message);
+      return -1;
+   }
+
+   // Check if the challenged user exists
+   Client *challengee = NULL;
+   for (int i = 0; i < actual; i++) {
+      if (strcmp(clientList[i].name, username) == 0) {
+         challengee = &clientList[i];
+      } 
+   }
+
+   if (challengee == NULL) {
+      snprintf(message, sizeof(message),
+               "[ERROR] user not found");
+      write_client(client->sock, message);
+      return -1;
+   } else if (challengee->status != AVAILABLE) {
+      snprintf(message, sizeof(message),
+               "[ERROR] user not available");
+      write_client(client->sock, message);
+      return -1;
+   }
+
+   snprintf(message, sizeof(message),"You've challenged %s to a private game!", challengee->name);
+   write_client(client->sock, message);
+   
+   // Ask the target player if they accept the challenge
+   snprintf(message, sizeof(message),"%s has challenged you! Do you accept? Type '/accept' or '/refuse'.", client->name);
+   write_client(challengee->sock, message);
+
+   challengee->status = WAITING_PRIVATE;
+   client->status = WAITING_PRIVATE;
+   challengee->challenger = client;
+
+   return 0;
+}
 
 
 static void list_clients(Client *clients, int actual, char* response){
@@ -234,30 +285,53 @@ static void list_clients(Client *clients, int actual, char* response){
 
 }
 
-static void list_games(Game **games, char* response){
-   strncat(response, "Here is the list of ongoing matches:", BUF_SIZE - strlen(response) - 1);
+static void list_games(Game **games, char* response, Client* sender) {
+    strncat(response, "Here is the list of ongoing matches:", BUF_SIZE - strlen(response) - 1);
 
-   int count = 0;
-   for (int i = 0; i < MAX_GAMES; i++) {
-      if (games[i] != NULL) {
-         char temp[128];
-         snprintf(temp, sizeof(temp), "\n - %d : ", i);
-         strncat(response, temp, BUF_SIZE - strlen(response) - 1);
+    int count = 0;
+    for (int i = 0; i < MAX_GAMES; i++) {
+        if (games[i] == NULL) continue;
 
-         if (games[i]->game_name[0] == '\0') {
-               strncat(response, "[Unnamed game]", BUF_SIZE - strlen(response) - 1);
-         } else {
-               strncat(response, games[i]->game_name, BUF_SIZE - strlen(response) - 1);
-         }
-         count++;
-      }
-   }
+        int include_game = 0;
 
-   if (count == 0) {
-      strncat(response, "\nNo match is currently ongoing.", BUF_SIZE - strlen(response) - 1);
-   }
+        if (games[i]->is_private == 0) {
+            // Public game
+            include_game = 1;
+        } else {
+            // Private game: check if sender is a player or viewer
+            if ((games[i]->player1.sock == sender->sock) || (games[i]->player2.sock == sender->sock)) {
+                include_game = 1;
+            } else {
+                for (int j = 0; j < BUF_VIEWERS; j++) {
+                    if (games[i]->viewers[j] == sender) {
+                        include_game = 1;
+                        break;
+                    }
+                }
+            }
+        }
 
+        if (include_game) {
+            char temp[128];
+            snprintf(temp, sizeof(temp), "\n - %d : ", i);
+            strncat(response, temp, BUF_SIZE - strlen(response) - 1);
+
+            if (games[i]->game_name[0] == '\0') {
+                strncat(response, "[Unnamed game]", BUF_SIZE - strlen(response) - 1);
+            } else {
+                strncat(response, games[i]->game_name, BUF_SIZE - strlen(response) - 1);
+            }
+
+            count++;
+        }
+    }
+
+    if (count == 0) {
+        strncat(response, "\nNo match is currently ongoing.", BUF_SIZE - strlen(response) - 1);
+    }
 }
+
+
 
 static void modify_bio(Client* sender, char* buffer, char* response) {
    char username[0];
@@ -370,6 +444,13 @@ static void talk_to(Client* clients, Client* sender, int actual, char* buffer, c
 static void accept_challenge(Game** games, Client* clientList, Client* challengee, char* response, int actual) {
 
    Client *challenger = challengee->challenger;
+   if(challengee->status != WAITING_PUBLIC)
+   {
+      snprintf(response, BUF_SIZE - sizeof(response),"You are not beeing challenged to a public game.");
+      write_client(challengee->sock, response);
+      return;
+   }
+
 
    snprintf(response, BUF_SIZE - sizeof(response),"You've accepted %s's challenge.", challenger->name);
    write_client(challengee->sock, response);
@@ -398,7 +479,74 @@ static void accept_challenge(Game** games, Client* clientList, Client* challenge
       return;
    }
    
-   if (create_game(challenger, challengee, games, board, new_game) != 0) {
+   if (create_game(challenger, challengee, games, board, new_game, 0) != 0) {
+      free(board);
+      free(new_game);
+      challenger->status = AVAILABLE;
+      challengee->status = AVAILABLE;
+      return;
+   }
+   
+   // Créer une structure pour passer les arguments au thread
+   Context* args = malloc(sizeof(Context));
+   args->clients = clientList;
+   args->current_game = new_game;
+   args->actual = actual;
+   args->games = games;
+
+   pthread_t game_thread;
+   if (pthread_create(&game_thread, NULL, play_thread, args) != 0) {
+      perror("pthread_create");
+      free(args);
+      challenger->status = AVAILABLE;
+      challengee->status = AVAILABLE;
+      save_game(&challenger, &challengee, board, new_game);
+      return;
+   }
+   
+   pthread_detach(game_thread); // Le thread se nettoie automatiquement
+}
+
+
+static void join_challenge(Game** games, Client* clientList, Client* challengee, char* response, int actual) {
+
+   Client *challenger = challengee->challenger;
+   if(challengee->status != WAITING_PRIVATE)
+   {
+      snprintf(response, BUF_SIZE - sizeof(response),"You are not beeing challenged to a private game.");
+      write_client(challengee->sock, response);
+      return;
+   }
+
+
+   snprintf(response, BUF_SIZE - sizeof(response),"You've accepted %s's challenge.", challenger->name);
+   write_client(challengee->sock, response);
+
+   snprintf(response, BUF_SIZE - sizeof(response), "%s accepted your challenge!", challengee->name);
+   write_client(challenger->sock, response);
+   challenger->status = IN_GAME;
+   challengee->status = IN_GAME;
+   
+   Board* board = create_board();
+   if (!board) {
+      snprintf(response, BUF_SIZE, "[ERROR] Failed to create game board.");
+      write_client(challenger->sock, response);
+      write_client(challengee->sock, response);
+      challenger->status = AVAILABLE;
+      challengee->status = AVAILABLE;
+      return;   // Exit if board creation failed
+   }
+
+   // Créer la partie
+   Game* new_game = malloc(sizeof(Game));
+   if (!new_game) {
+      free(board);
+      challenger->status = AVAILABLE;
+      challengee->status = AVAILABLE;
+      return;
+   }
+   
+   if (create_game(challenger, challengee, games, board, new_game, 1) != 0) {
       free(board);
       free(new_game);
       challenger->status = AVAILABLE;
@@ -482,6 +630,57 @@ static void observe_game(Game** games, char* buffer, Client* client, char* respo
    snprintf(response, BUF_SIZE, "You're now observing %s challenge.", game_observed->game_name);
    
 }
+
+static void add_viewers(Game **games, Client *clients, int actual, const char *buffer, Client *sender) {
+    char names[BUF_SIZE];
+    char *token;
+
+    // Use sender's game_location to find the game
+    int loc = sender->game_location;
+    if (loc < 0 || games[loc] == NULL || games[loc]->in_progress != 1) {
+        write_client(sender->sock, "You are not in an active game.");
+        return;
+    }
+
+    Game* game = games[loc];
+
+    // Copy buffer after "/friend " to get the list of names
+    strncpy(names, buffer + 8, sizeof(names));
+    names[sizeof(names) - 1] = '\0';
+
+    token = strtok(names, ",");
+    while (token != NULL) {
+        // Trim spaces at start/end
+        while (*token == ' ') token++;
+        char *end = token + strlen(token) - 1;
+        while (end > token && (*end == ' ' || *end == '\n')) *end-- = '\0';
+
+        // Find client in client list
+        for (int i = 0; i < actual; i++) {
+            if (strcmp(clients[i].name, token) == 0) {
+                // Add client to viewers
+                int added = 0;
+                for (int j = 0; j < BUF_VIEWERS; j++) {
+                    if (game->viewers[j] == NULL) {
+                        game->viewers[j] = &clients[i];
+                        added = 1;
+                        break;
+                    }
+                }
+                if (added) {
+                    char msg[BUF_SIZE];
+                    snprintf(msg, sizeof(msg), "%s added as viewer.", clients[i].name);
+                    write_client(sender->sock, msg);
+                }
+                break;
+            }
+        }
+
+        token = strtok(NULL, ",");
+    }
+}
+
+
 
 static void quit_game(Game** games, Client* sender, char* response ) {
    if (sender->status != OBSERVING) {
@@ -635,7 +834,7 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
 
 }
 
-static int create_game(Client *player1, Client *player2, Game **gamelist, Board *board, Game *new_game) {
+static int create_game(Client *player1, Client *player2, Game **gamelist, Board *board, Game *new_game, int type) {
    // Generate a base game name
    char name[BUF_SIZE];
    snprintf(name, sizeof(name), "%s VS %s", player1->name, player2->name);
@@ -665,7 +864,8 @@ static int create_game(Client *player1, Client *player2, Game **gamelist, Board 
    new_game->player2 = *player2;
    strncpy(new_game->game_name, unique_name, sizeof(new_game->game_name));
    new_game->board = board;
-
+   new_game->is_private = type;
+   new_game->in_progress = 1;
    if(available_pos == -1){
       free(new_game);
       return -2;
@@ -685,10 +885,8 @@ static int remove_game(Game **gamelist, Game *game){
    for (int j = 0; j < MAX_GAMES; j++) {
       if (gamelist[j] == game) {
          gamelist[j] = NULL;
-         if(game->board)free(game->board);
-         if(game->viewers)
+         if (game->board) free(game->board);
          for (int i = 0; i < game->nb_viewers; i++) game->viewers[i]->status = AVAILABLE;
-         free(game->viewers);
          free(game);
          break;
       }
@@ -830,22 +1028,28 @@ static void treat_command(Game **games, Client *clients, Client* sender, int act
    if (!strcmp(buffer, "/players")) {
       list_clients(clients, actual, response);  
    } else if (!strcmp(buffer, "/games")) {
-      list_games(games, response);     
+      list_games(games, response,sender);     
    } else if (!strcmp(buffer, "/help")) {
       list_commands(sender, response);
    } else if (!strncmp(buffer, "/challenge ", 11)) {
       challenge_player(clients, sender, actual, buffer);
-   } else if (!strncmp(buffer, "/bio ", 5)) {
+   } 
+   else if (!strncmp(buffer, "/private ", 9)) {
+      create_private_game(clients, sender, actual, buffer);
+   }else if (!strncmp(buffer, "/bio ", 5)) {
       modify_bio(sender, buffer, response); 
    } else if (!strncmp(buffer, "/whois ", 7)) {
       consult_client(clients, actual, buffer, response);
    } else if (!strncmp(buffer, "/t ", 3)) {
       talk_to(clients, sender, actual, buffer, response);
    } else if (!strcmp(buffer, "/accept")) {
-      accept_challenge(games, clients, sender, response, actual);
-   } else if (!strcmp(buffer, "/refuse")) {
+      if (sender->status == WAITING_PRIVATE) join_challenge(games, clients, sender, response, actual);
+      else accept_challenge(games, clients, sender, response, actual);
+   }else if (!strcmp(buffer, "/refuse")) {
       refuse_challenge(sender, response);
-   } else if(!strncmp(buffer, "/observe ", 9)) {
+   } else if (!strncmp(buffer, "/friend ", 8)) {
+      add_viewers(games, clients, actual, buffer, sender);
+   }else if(!strncmp(buffer, "/observe ", 9)) {
       observe_game(games, buffer, sender, response);
    } else if (!strcmp(buffer, "/quit")) {
       quit_game(games, sender, response); 
