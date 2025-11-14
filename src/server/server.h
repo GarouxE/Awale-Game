@@ -34,6 +34,7 @@ typedef struct in_addr IN_ADDR;
 #define MAX_GAMES       100
 #define BUF_SIZE    1024
 #define BUF_VIEWERS 10
+#define MAX_COUNTDOWN 3000
 
 #include "client.h"
 #include "../game/game.h" 

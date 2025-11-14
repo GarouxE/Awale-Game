@@ -1,0 +1,193 @@
+=== GAME START ===
+Date: 2025-11-14 10:19:55
+GameName: bonjour VS one
+Player1: bonjour
+Player2: one
+Clockwise: 0
+
+========== GAME BOARD (Round 1) ==========
+          bonjour (P1)
+
+    A   B   C   D   E   F
+   (4) (4) (4) (4) (4) (4)
+   (4) (4) (4) (4) (4) (4)
+    a   b   c   d   e   f
+
+          one (P2)
+
+Captures:
+  bonjour: 0
+  one: 0
+Move played: begining
+================================
+
+========== GAME BOARD (Round 2) ==========
+          bonjour (P1)
+
+    A   B   C   D   E   F
+   (0) (4) (4) (4) (4) (4)
+   (5) (5) (5) (5) (4) (4)
+    a   b   c   d   e   f
+
+          one (P2)
+
+Captures:
+  bonjour: 0
+  one: 0
+Move played: Player 1 selected A
+================================
+
+========== GAME BOARD (Round 3) ==========
+          bonjour (P1)
+
+    A   B   C   D   E   F
+   (0) (4) (4) (4) (4) (4)
+   (5) (5) (5) (5) (4) (4)
+    a   b   c   d   e   f
+
+          one (P2)
+
+Captures:
+  bonjour: 0
+  one: 0
+Move played: 
+Player 2 surrendered
+
+================================
+Captures: P1=0 P2=0
+=== GAME END ===
+
+=== GAME START ===
+Date: 2025-11-14 10:22:13
+GameName: bonjour VS one
+Player1: bonjour
+Player2: one
+Clockwise: 0
+
+========== GAME BOARD (Round 1) ==========
+          bonjour (P1)
+
+    A   B   C   D   E   F
+   (4) (4) (4) (4) (4) (4)
+   (4) (4) (4) (4) (4) (4)
+    a   b   c   d   e   f
+
+          one (P2)
+
+Captures:
+  bonjour: 0
+  one: 0
+Move played: begining
+================================
+
+========== GAME BOARD (Round 2) ==========
+          bonjour (P1)
+
+    A   B   C   D   E   F
+   (0) (4) (4) (4) (4) (4)
+   (5) (5) (5) (5) (4) (4)
+    a   b   c   d   e   f
+
+          one (P2)
+
+Captures:
+  bonjour: 0
+  one: 0
+Move played: Player 1 selected A
+================================
+
+========== GAME BOARD (Round 3) ==========
+          bonjour (P1)
+
+    A   B   C   D   E   F
+   (0) (4) (4) (4) (4) (4)
+   (0) (6) (6) (6) (5) (5)
+    a   b   c   d   e   f
+
+          one (P2)
+
+Captures:
+  bonjour: 0
+  one: 0
+Move played: Player 2 selected A
+================================
+
+========== GAME BOARD (Round 4) ==========
+          bonjour (P1)
+
+    A   B   C   D   E   F
+   (0) (4) (4) (4) (4) (4)
+   (0) (6) (6) (6) (5) (5)
+    a   b   c   d   e   f
+
+          one (P2)
+
+Captures:
+  bonjour: 0
+  one: 0
+Move played: 
+Player 1 surrendered
+
+================================
+Captures: P1=0 P2=0
+=== GAME END ===
+
+=== GAME START ===
+Date: 2025-11-14 10:30:12
+GameName: one VS bonjour
+Player1: one
+Player2: bonjour
+Clockwise: 0
+
+========== GAME BOARD (Round 1) ==========
+          one (P1)
+
+    A   B   C   D   E   F
+   (4) (4) (4) (4) (4) (4)
+   (4) (4) (4) (4) (4) (4)
+    a   b   c   d   e   f
+
+          bonjour (P2)
+
+Captures:
+  one: 0
+  bonjour: 0
+Move played: begining
+================================
+
+========== GAME BOARD (Round 2) ==========
+          one (P1)
+
+    A   B   C   D   E   F
+   (0) (4) (4) (4) (4) (4)
+   (5) (5) (5) (5) (4) (4)
+    a   b   c   d   e   f
+
+          bonjour (P2)
+
+Captures:
+  one: 0
+  bonjour: 0
+Move played: Player 1 selected A
+================================
+
+========== GAME BOARD (Round 3) ==========
+          one (P1)
+
+    A   B   C   D   E   F
+   (0) (4) (4) (4) (4) (4)
+   (5) (5) (5) (5) (4) (4)
+    a   b   c   d   e   f
+
+          bonjour (P2)
+
+Captures:
+  one: 0
+  bonjour: 0
+Move played: 
+Player 2 surrendered
+
+================================
+Captures: P1=0 P2=0
+=== GAME END ===
+

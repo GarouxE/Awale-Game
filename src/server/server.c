@@ -112,6 +112,7 @@ static void app(void)
          c.status = AVAILABLE;
          c.private_mode = 0;
          c.friend_count = 0;
+         c.bio[BUF_SIZE - 1] = '\0';
          for (int _fi = 0; _fi < MAX_FRIENDS; _fi++) c.friends[_fi][0] = '\0';
          /* load persisted score if any */
          c.score = load_score_for_user("scores.txt", c.name);
@@ -347,7 +348,7 @@ static void list_games(Game **games, char* response){
 }
 
 static void modify_bio(Client* sender, char* buffer, char* response) {
-   char username[0];
+   char username[BUF_SIZE];
    char new_bio[BUF_SIZE];
    parse_command(buffer, username, new_bio, 0, 1);
 
@@ -365,7 +366,7 @@ static void modify_bio(Client* sender, char* buffer, char* response) {
 
 static void consult_client(Client *clients, int actual, char*buffer, char* response) {
    char username[BUF_SIZE];
-   char message[0];
+   char message[BUF_SIZE];
    parse_command(buffer, username, message, 1, 0);
    int found = 0;
 
@@ -428,7 +429,7 @@ static void list_commands(Client* client, char* response) {
    strncat(response, "- /quit : to quit observer mode.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /ranking <me|[number]>: see the player ranking.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /refuse : to refuse a challenge.\n", BUF_SIZE - strlen(response) - 1);
-   strncat(response, "- /savedgame : shows a list of saved games.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /savedgames : shows a list of saved games.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /t [username] [message] : to chat with a player. Use 'all' to talk to every players.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /viewgame [number] : Shows the saved game.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /whois [username] : to consult player's bio.\n", BUF_SIZE - strlen(response) - 1);
@@ -669,12 +670,13 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
       snprintf(buffer, sizeof(buffer), "\nEnter your move"); 
       write_client(actual_player->sock, buffer);
 
-      int valid_move = 0 ;
+      int valid_move = 0 , countdown = MAX_COUNTDOWN;
       while (!valid_move) {
          // D'abord checker si l'adversaire a envoyé des commandes
          int has_opponent_msg;
          Message opponent_msg = queue_try_pop(opponent->queue, &has_opponent_msg);
-         
+         countdown--;
+         //printf("Temps restant: %d", countdown);
          if (has_opponent_msg) {
             if (opponent_msg.content[0] == '/') {
                // Commande de l'adversaire - traiter immédiatement
@@ -693,7 +695,7 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
                // Commande du joueur actuel
                printf("Commande du joueur actuel %s : %s\n", actual_player->name, player_msg.content);
                /* special in-game command: /end -> abort match, award captures and save */
-               if (strcmp(player_msg.content, "/end") == 0 ) {
+               if (strcmp(player_msg.content, "/end") == 0 || countdown == 0 ) {
                   int turn = player_turn(board, 18);
                   /* Apply capture-based scoring to both players (like normal end) */
                   int idx1 = find_client_index_by_name(clients, actual, player1.name);
@@ -708,7 +710,7 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
                   }
 
                   /* Notify players and viewers: the other player wins by forfeit */
-                  snprintf(buffer, sizeof(buffer), "%s aborted the match. %s wins by forfeit!", actual_player->name, opponent->name);
+                  if (strcmp(player_msg.content, "/end") == 0 ) snprintf(buffer, sizeof(buffer), "%s aborted the match. %s wins by forfeit!", actual_player->name, opponent->name);
                   write_client(player1.sock, buffer);
                   write_client(player2.sock, buffer);
                   for (int v = 0; v < game->nb_viewers; v++) {
@@ -731,10 +733,10 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
 
             } else if (strlen(player_msg.content) == 1) {
                // C'est un coup !
+               countdown = MAX_COUNTDOWN;
                place_char = player_msg.content[0];
                place = letter_to_int(place_char);
                valid_move = 1;
-               
             } else {
                // Message invalide
                snprintf(buffer, sizeof(buffer), "Invalid input. Enter a letter (a-f) or a command (/help)");
@@ -744,6 +746,31 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
          
          if (!valid_move) {
             usleep(10000); // 10ms
+         }
+
+         if (countdown <= 10) {
+            snprintf(buffer, sizeof(buffer), "%s was reported inactive. %s wins by forfeit!", actual_player->name, opponent->name);
+            write_client(opponent->sock, buffer);
+            int turn = player_turn(board, 18);
+            /* Apply capture-based scoring to both players (like normal end) */
+            int idx1 = find_client_index_by_name(clients, actual, player1.name);
+            if (idx1 != -1) {
+               clients[idx1].score += board->player1_captures;
+               save_score_for_user("scores.txt", clients[idx1].name, clients[idx1].score);
+            }
+            int idx2 = find_client_index_by_name(clients, actual, player2.name);
+            if (idx2 != -1) {
+               clients[idx2].score += board->player2_captures;
+               save_score_for_user("scores.txt", clients[idx2].name, clients[idx2].score);
+            }
+
+         
+
+            /* Persist the game record */
+            save_game(&player1, &player2, board, game);
+
+            aborted = 1;
+            break; /* exit inner input loop and then outer loop will be broken */
          }
       }
 

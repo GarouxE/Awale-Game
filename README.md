@@ -32,6 +32,7 @@ Switch into the folder `/bin` and use the following commands
 | /quit | Quit observer mode|
 | /ranking <me &#124; [number]> | See the player ranking |
 | /refuse | Decline an invitation to a challenge |
+| /savedgames | Shows a list of all the saved games of all the players |
 | /t [username] [message]| Start a chat with a user |
 | /viewgame [number] | Shows the saved game |
 | /whois [username] | Consult a player's bio |
