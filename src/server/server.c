@@ -3,9 +3,48 @@
 #include <errno.h>
 #include <string.h>
 #include <pthread.h>
+#include <ctype.h>
+#include <time.h>
 
 #include "server.h"
 #include "../game/game.h"
+#include "savegame.h"
+#include "ranking.h"
+#include "friends.h"
+
+/* prototypes for helpers used before their definition */
+static int load_score_for_user(const char *filename, const char *username);
+static int save_score_for_user(const char *filename, const char *username, int score);
+static int find_client_index_by_name(Client *clients, int actual, const char *name);
+static int is_username_unique(Client *clients, int actual, const char *name);
+
+/* Forward declarations for static helpers defined later in this file.
+   These keep the functions visible to code that appears earlier (e.g. app()). */
+static void init(void);
+static void end(void);
+static int init_connection(void);
+static void end_connection(int sock);
+static int read_client(SOCKET sock, char *buffer);
+static void send_message_to_all_clients(Client *clients, Client sender, int actual, const char *buffer, char from_server);
+static void list_clients(Client *clients, int actual, char* response);
+static void list_games(Game **games, char* response);
+static void modify_bio(Client* sender, char* buffer, char* response);
+static int challenge_player(Client *clientList, Client* client, int actual, char *buffer);
+static void list_commands(Client* client, char* response);
+static void talk_to(Client* clients, Client* sender, int actual, char* buffer, char* response);
+static void accept_challenge(Game** games, Client* clientList, Client* challengee, char* response, int actual);
+static void refuse_challenge(Client* challengee, char* response);
+static void observe_game(Game** games, Client* clients, int actual, char* buffer, Client* client, char* response);
+static void quit_game(Game** games, Client* sender, char* response );
+static int create_game(Client *player1, Client *player2, Game **gamelist, Board *board, Game *new_game);
+static int remove_game(Game **gamelist, Game *game);
+static void remove_client(Client *clients, int to_remove, int *actual);
+static void clear_clients(Client *clients, int actual);
+static void parse_command(const char *buffer, char* username, char* message, int username_bool, int message_bool);
+static void treat_command(Game **games, Client *clients, Client* client, int actual, const char *buffer, int in_game);
+static void print_board(Board* board, char* buffer, Client player1, Client player2);
+int play(Game** games, Client* clients, Client player1, int actual, Client player2, Game* game);
+void* play_thread(void* arg);
 
 static void init(void)
 {
@@ -89,6 +128,13 @@ static void app(void)
             continue;
          }
 
+         /* check username uniqueness */
+         if (!is_username_unique(clients, actual, buffer)) {
+            write_client(csock, "[ERROR] Username already taken\n");
+            closesocket(csock);
+            continue;
+         }
+
          /* what is the new maximum fd ? */
          max = csock > max ? csock : max;
 
@@ -96,7 +142,13 @@ static void app(void)
 
          Client c = { csock };
          strncpy(c.name, buffer, BUF_SIZE - 1);
+         c.name[BUF_SIZE - 1] = '\0';
          c.status = AVAILABLE;
+         c.private_mode = 0;
+         c.friend_count = 0;
+         for (int _fi = 0; _fi < MAX_FRIENDS; _fi++) c.friends[_fi][0] = '\0';
+         /* load persisted score if any */
+         c.score = load_score_for_user("scores.txt", c.name);
          
          c.queue = malloc(sizeof(MessageQueue));
          memset(c.queue, 0, sizeof(MessageQueue));
@@ -122,6 +174,8 @@ static void app(void)
                /* client disconnected */
                if(c == 0)
                {
+                  /* persist score on disconnect */
+                  save_score_for_user("scores.txt", client->name, client->score);
                   closesocket(clients[i].sock);
                   remove_client(clients, i, &actual);
                   strncpy(buffer, client->name, BUF_SIZE - 1);
@@ -164,6 +218,73 @@ static void clear_clients(Client *clients, int actual)
    {
       closesocket(clients[i].sock);
    }
+}
+
+/* ---------- Persistence helpers for scores (simple text file) ---------- */
+static int load_score_for_user(const char *filename, const char *username) {
+   FILE *f = fopen(filename, "r");
+   if (!f) return 0; /* treat missing file as zero scores */
+   char line[BUF_SIZE];
+   char name[BUF_SIZE];
+   int score;
+   while (fgets(line, sizeof(line), f)) {
+      if (sscanf(line, "%1023s %d", name, &score) == 2) {
+         if (strcmp(name, username) == 0) {
+            fclose(f);
+            return score;
+         }
+      }
+   }
+   fclose(f);
+   return 0;
+}
+
+static int save_score_for_user(const char *filename, const char *username, int score) {
+   /* Read original and write to tmp, updating or appending the user line */
+   char tmpname[256];
+   snprintf(tmpname, sizeof(tmpname), "%s.tmp", filename);
+   FILE *fin = fopen(filename, "r");
+   FILE *fout = fopen(tmpname, "w");
+   int found = 0;
+   char line[BUF_SIZE];
+   char name[BUF_SIZE];
+   int s;
+
+   if (!fout) return -1;
+
+   if (fin) {
+      while (fgets(line, sizeof(line), fin)) {
+         if (sscanf(line, "%1023s %d", name, &s) == 2) {
+            if (strcmp(name, username) == 0) {
+               fprintf(fout, "%s %d\n", username, score);
+               found = 1;
+            } else {
+               fprintf(fout, "%s %d\n", name, s);
+            }
+         }
+      }
+      fclose(fin);
+   }
+
+   if (!found) {
+      fprintf(fout, "%s %d\n", username, score);
+   }
+   fclose(fout);
+   /* replace original file */
+   remove(filename);
+   rename(tmpname, filename);
+   return 0;
+}
+
+static int find_client_index_by_name(Client *clients, int actual, const char *name) {
+   for (int i = 0; i < actual; i++) {
+      if (strcmp(clients[i].name, name) == 0) return i;
+   }
+   return -1;
+}
+
+static int is_username_unique(Client *clients, int actual, const char *name) {
+   return find_client_index_by_name(clients, actual, name) == -1;
 }
 
 static int challenge_player(Client *clientList, Client* client, int actual, char *buffer) {
@@ -328,17 +449,24 @@ static void print_board(Board* board, char* buffer, Client player1, Client playe
 
 static void list_commands(Client* client, char* response) {
    strncat(response, "Here is the list of all commands: \n", BUF_SIZE - strlen(response) - 1);
-   strncat(response, "- /players : to list every usernames of players connected.\n", BUF_SIZE - strlen(response) - 1);
-   strncat(response, "- /games : to list every ongoing games.\n", BUF_SIZE - strlen(response) - 1);
-   strncat(response, "- /challenge [username] : to challenge a player.\n", BUF_SIZE - strlen(response) - 1);
-   strncat(response, "- /t [username] [message] : to chat with a player. Use 'all' to talk to every players.\n", BUF_SIZE - strlen(response) - 1);
-   strncat(response, "- /bio [message] : to modify your bio.\n", BUF_SIZE - strlen(response) - 1);
-   strncat(response, "- /whois [username] : to consult player's bio.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /accept : to accept a challenge.\n", BUF_SIZE - strlen(response) - 1);
-   strncat(response, "- /refuse : to refuse a challenge.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /bio [message] : to modify your bio.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /challenge [username] : to challenge a player.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /friend <add|remove> [username] : add or remove a friend allowed to spectate when private.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /friends : list your friends.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /end : Ends/forfeit an ongoing game.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /games : to list every ongoing games.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /observe [challenge] : to observe ongoing games.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /players : to list every usernames of players connected.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /private <on|off> : enable/disable private mode for your matches.\n", BUF_SIZE - strlen(response) - 1);
    strncat(response, "- /quit : to quit observer mode.\n", BUF_SIZE - strlen(response) - 1);
-   strncat(response, "- /ranking : see the player ranking.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /ranking <me|[number]>: see the player ranking.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /refuse : to refuse a challenge.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /savedgame : shows a list of saved games.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /t [username] [message] : to chat with a player. Use 'all' to talk to every players.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /viewgame [number] : Shows the saved game.\n", BUF_SIZE - strlen(response) - 1);
+   strncat(response, "- /whois [username] : to consult player's bio.\n", BUF_SIZE - strlen(response) - 1);
+
 }
 
 static void talk_to(Client* clients, Client* sender, int actual, char* buffer, char* response) {
@@ -427,7 +555,6 @@ static void accept_challenge(Game** games, Client* clientList, Client* challenge
    pthread_detach(game_thread); // Le thread se nettoie automatiquement
 }
 
-
 // Wrapper pour play() compatible avec pthread
 void* play_thread(void* arg) {
    Context* args = (Context*)arg;
@@ -471,20 +598,50 @@ static void observe_game(Game** games, Client* clients, int actual, char* buffer
       snprintf(response, BUF_SIZE, "You must be available to observe a challenge.");
       return;
    }
-   else if (index_game < 0 || index_game >= MAX_GAMES || games[index_game] == NULL) {
+   else if (games[index_game] == NULL) {
       snprintf(response, BUF_SIZE, "[ERROR] Challenge not found.");
       return;
    }
 
    game_observed = games[index_game];
-   if (game_observed->nb_viewers < BUF_VIEWERS) {
-      game_observed->viewers[game_observed->nb_viewers++] = client; 
-      client->game_location = index_game;
-      client->status = OBSERVING;
-      snprintf(response, BUF_SIZE, "You're now observing %s challenge.", game_observed->game_name);
-   } else {
-      snprintf(response, BUF_SIZE, "[ERROR] Too many observers for this game.");
+   int p1_idx = find_client_index_by_name(clients, actual, game_observed->player1.name);
+   int p2_idx = find_client_index_by_name(clients, actual, game_observed->player2.name);
+   Client *p1_live = (p1_idx != -1) ? &clients[p1_idx] : &game_observed->player1;
+   Client *p2_live = (p2_idx != -1) ? &clients[p2_idx] : &game_observed->player2;
+
+   /* Enforce privacy: if either player enabled private_mode, only allow
+      observers who are in that player's friend list. */
+   int allow = 1;
+   /* check player1 */
+   /* The game stores copies of the players (including their friend lists and
+      private_mode). We'll check those copies to decide whether the observer is
+      allowed to join. */
+   /* If player1 is private and observer is not in player1 friends -> deny */
+   if (p1_live->private_mode) {
+      int found = 0;
+      for (int i = 0; i < p1_live->friend_count; i++) {
+         if (strcmp(p1_live->friends[i], client->name) == 0) { found = 1; break; }
+      }
+      if (!found) allow = 0;
    }
+   if (p2_live->private_mode) {
+      int found = 0;
+      for (int i = 0; i < p2_live->friend_count; i++) {
+         if (strcmp(p2_live->friends[i], client->name) == 0) { found = 1; break; }
+      }
+      if (!found) allow = 0;
+   }
+
+   if (!allow) {
+      snprintf(response, BUF_SIZE, "[ERROR] This match is private. You are not allowed to observe it.");
+      return;
+   }
+
+   game_observed->viewers[game_observed->nb_viewers++] = client;
+   client->game_location = index_game;
+   client->status = OBSERVING;
+   snprintf(response, BUF_SIZE, "You're now observing %s challenge.", game_observed->game_name);
+   
 }
 
 static void quit_game(Game** games, Client* sender, char* response ) {
@@ -518,6 +675,7 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
    char* orientation = clockwise ? "clockwise" : "counterclockwise";
 
    // Game loop
+   int aborted = 0; /* set to 1 when a player aborts the match with /end */
    while (!game_over(board)) {
       int num_player = board->round % 2;  // Determine which player's turn
       Client* actual_player = (num_player == 0) ? &player1 : &player2;
@@ -568,12 +726,42 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
             if (player_msg.content[0] == '/') {
                // Commande du joueur actuel
                printf("Commande du joueur actuel %s : %s\n", actual_player->name, player_msg.content);
+               /* special in-game command: /end -> abort match, award captures and save */
+               if (strcmp(player_msg.content, "/end") == 0) {
+                  /* Apply capture-based scoring to both players (like normal end) */
+                  int idx1 = find_client_index_by_name(clients, actual, player1.name);
+                  if (idx1 != -1) {
+                     clients[idx1].score += board->player1_captures;
+                     save_score_for_user("scores.txt", clients[idx1].name, clients[idx1].score);
+                  }
+                  int idx2 = find_client_index_by_name(clients, actual, player2.name);
+                  if (idx2 != -1) {
+                     clients[idx2].score += board->player2_captures;
+                     save_score_for_user("scores.txt", clients[idx2].name, clients[idx2].score);
+                  }
+
+                  /* Notify players and viewers: the other player wins by forfeit */
+                  snprintf(buffer, sizeof(buffer), "%s aborted the match. %s wins by forfeit!", actual_player->name, opponent->name);
+                  write_client(player1.sock, buffer);
+                  write_client(player2.sock, buffer);
+                  for (int v = 0; v < game->nb_viewers; v++) {
+                     Client* client = game->viewers[v];
+                     write_client(client->sock, buffer);
+                  }
+
+                  /* Persist the game record */
+                  save_game(&player1, &player2, board, game);
+
+                  aborted = 1;
+                  break; /* exit inner input loop and then outer loop will be broken */
+               }
+
                treat_command(games, clients, actual_player, actual, player_msg.content, 1);
-               
-               // Redemander un coup
+
+               /* Redemander un coup */
                snprintf(buffer, sizeof(buffer), "\nEnter your move"); 
                write_client(actual_player->sock, buffer);
-               
+
             } else if (strlen(player_msg.content) == 1) {
                // C'est un coup !
                place_char = player_msg.content[0];
@@ -592,7 +780,9 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
          }
       }
 
-      // Execute the player's turn
+   if (aborted) break;
+
+   // Execute the player's turn
       int turn = player_turn(board, place);
       switch(turn) {
          case -1: snprintf(buffer, BUF_SIZE, "You cannot play this move."); break;
@@ -608,31 +798,49 @@ int play(Game** games, Client* clients, Client player1, int actual, Client playe
       
    }
 
-   // Game over, print the final scores
-
-   snprintf(buffer, sizeof(buffer), "\nGame over! Final scores:\n");
-   snprintf(buffer, sizeof(buffer), "Player 1 captures: %d", board->player1_captures);
-   snprintf(buffer, sizeof(buffer), "Player 2 captures: %d", board->player2_captures);
-   write_client(player1.sock, buffer);
-   write_client(player2.sock, buffer); 
-   for (int i=0; i<game->nb_viewers; i++) {
-      Client* client = game->viewers[i];
-      write_client(client->sock, buffer);
-   }
+   // Game over: the match was aborted by a player (/end) = forfeit or player lost
    
+   if (!aborted) {
+      /* compose final scores message */
+      buffer[0] = '\0';
+      snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), "\nGame over! Final scores:\n");
+      snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), "Player 1 captures: %d\n", board->player1_captures);
+      snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), "Player 2 captures: %d\n", board->player2_captures);
+      write_client(player1.sock, buffer);
+      write_client(player2.sock, buffer);
+      for (int i=0; i<game->nb_viewers; i++) {
+         Client* client = game->viewers[i];
+         write_client(client->sock, buffer);
+      }
 
-   if (board->player1_captures > board->player2_captures) {
-      snprintf(buffer, sizeof(buffer), "Player 1 wins!");
-   } else if (board->player2_captures > board->player1_captures) {
-      snprintf(buffer, sizeof(buffer), "Player 2 wins!");
-   } else {
-      snprintf(buffer, sizeof(buffer), "It's a tie!");
-   }
-   write_client(player1.sock, buffer);
-   write_client(player2.sock, buffer);
-   for (int i=0; i<game->nb_viewers; i++) {
-      Client* client = game->viewers[i];
-      write_client(client->sock, buffer);
+      /* Award players points based on captures (add their capture counts to their persistent score) */
+      int idx1 = find_client_index_by_name(clients, actual, player1.name);
+      if (idx1 != -1) {
+         clients[idx1].score += board->player1_captures;
+         save_score_for_user("scores.txt", clients[idx1].name, clients[idx1].score);
+      }
+      int idx2 = find_client_index_by_name(clients, actual, player2.name);
+      if (idx2 != -1) {
+         clients[idx2].score += board->player2_captures;
+         save_score_for_user("scores.txt", clients[idx2].name, clients[idx2].score);
+      }
+
+      char result[BUF_SIZE];
+      if (board->player1_captures > board->player2_captures) {
+         snprintf(result, sizeof(result), "Player 1 wins!");
+      } else if (board->player2_captures > board->player1_captures) {
+         snprintf(result, sizeof(result), "Player 2 wins!");
+      } else {
+         snprintf(result, sizeof(result), "It's a tie!");
+      }
+
+      /* send winner/tie message */
+      write_client(player1.sock, result);
+      write_client(player2.sock, result);
+      for (int i=0; i<game->nb_viewers; i++) {
+         Client* client = game->viewers[i];
+         write_client(client->sock, result);
+      }
    }
 
    return 0;
@@ -678,21 +886,17 @@ static int create_game(Client *player1, Client *player2, Game **gamelist, Board 
    return 0;
 }
 
-static int save_game(Client *player1, Client *player2, Board *board, Game *game){
-   game->player1 = *player1;
-   game->player2 = *player2;
-   game->board = board;
-   return 0;
-}
+/* save_game implementation moved to src/server/savegame.c */
 
 static int remove_game(Game **gamelist, Game *game){
    for (int j = 0; j < MAX_GAMES; j++) {
       if (gamelist[j] == game) {
          gamelist[j] = NULL;
          if(game->board)free(game->board);
-         if(game->viewers)
-         for (int i = 0; i < game->nb_viewers; i++) game->viewers[i]->status = AVAILABLE;
-         free(game->viewers);
+         if(game->viewers) {
+            for (int i = 0; i < game->nb_viewers; i++) if (game->viewers[i]) game->viewers[i]->status = AVAILABLE;
+            /* game->viewers is an embedded fixed-size array in Game; do not free it */
+         }
          free(game);
          break;
       }
@@ -796,24 +1000,8 @@ void write_client(SOCKET sock, const char *buffer)
    }
 }
 static void copy_client(Client* dest, Client* src){
-   
-
-}
-
-
-static void user_ranking( Client *clients, SOCKET sock, int actual){
-   int i,j;
-   Client temp;
-   for(i = 0; i < actual - 1; i++){
-      for(j = 0; i < actual - 1; i++){
-         if(clients[j].score < clients[j+1].score){
-            copy_client(&temp, &clients[j]);
-            copy_client(&clients[j], &clients[j+1]);
-            copy_client(&clients[j+1], &temp);
-         }
-      }
-   }
-
+   /* shallow copy of client struct */
+   *dest = *src;
 }
 
 static void parse_command(const char *buffer, char *username, char *message, int username_bool, int message_bool)
@@ -851,6 +1039,15 @@ static void treat_command(Game **games, Client *clients, Client* sender, int act
    
    char response[BUF_SIZE];
    response[0] = 0;
+   /* If the command comes from in-game message handling, 'sender' may be a
+      local copy inside the game thread. Find and use the live client entry so
+      changes (private/friends/etc.) apply immediately to the server state. */
+   if (in_game && clients != NULL) {
+      int live_idx = find_client_index_by_name(clients, actual, sender->name);
+      if (live_idx != -1) {
+         sender = &clients[live_idx];
+      }
+   }
    if (!strcmp(buffer, "/players")) {
       list_clients(clients, actual, response);  
    } else if (!strcmp(buffer, "/games")) {
@@ -870,11 +1067,26 @@ static void treat_command(Game **games, Client *clients, Client* sender, int act
    } else if (!strcmp(buffer, "/refuse")) {
       refuse_challenge(sender, response);
    } else if(!strncmp(buffer, "/observe ", 9)) {
-      observe_game(games, clients, actual, (char*)buffer, sender, response);
+      observe_game(games, clients, actual, buffer, sender, response);
    } else if (!strcmp(buffer, "/quit")) {
       quit_game(games, sender, response); 
-   } else if (!strcmp(buffer, "/ranking")) {
-      user_ranking(clients, sender->sock, actual); 
+   } else if (!strcmp(buffer, "/savedgames")) {
+      list_saved_games(sender, response);
+   } else if (!strncmp(buffer, "/viewgame ", 9)) {
+      view_saved_game(sender, buffer, response);
+   } else if (!strcmp(buffer, "/friends")) {
+      list_friends(sender, response);
+   } else if (!strncmp(buffer, "/friend ", 8)) {
+      friend_command(sender, buffer, response);
+   } else if (!strncmp(buffer, "/private", 8)) {
+      set_private_mode(sender, buffer, response);
+   } else if (!strncmp(buffer, "/ranking", 8)) {
+      char arg[64] = "";
+      if (sscanf(buffer, "/ranking %63s", arg) == 1) {
+         user_ranking(clients, sender->sock, actual, sender, arg);
+      } else {
+         user_ranking(clients, sender->sock, actual, sender, "");
+      }
    } else {
       strcpy(response, "Command not found. Try /help to get the commands list.");
    }
