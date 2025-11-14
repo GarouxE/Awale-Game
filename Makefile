@@ -12,7 +12,11 @@ SERVER_EXEC = $(BIN_DIR)/server
 
 # Sources
 CLIENT_SRC = $(SRC_DIR)/client/client.c
-SERVER_SRC = $(SRC_DIR)/server/server.c
+SERVER_SRC = $(SRC_DIR)/server/server.c \
+			 $(SRC_DIR)/server/ranking.c \
+			 $(SRC_DIR)/server/friends.c \
+			 $(SRC_DIR)/server/savegame.c \
+			 $(SRC_DIR)/server/savegame_extra.c
 GAME_SRC   = $(SRC_DIR)/game/game.c
 
 # Headers
@@ -22,7 +26,7 @@ GAME_HEADERS   = $(SRC_DIR)/game/game.h
 
 # Objects
 CLIENT_OBJ = $(BUILD_DIR)/client.o
-SERVER_OBJ = $(BUILD_DIR)/server.o
+SERVER_OBJ = $(BUILD_DIR)/server.o $(BUILD_DIR)/ranking.o $(BUILD_DIR)/friends.o $(BUILD_DIR)/savegame.o $(BUILD_DIR)/savegame_extra.o
 GAME_OBJ   = $(BUILD_DIR)/game.o
 MESSAGE_OBJ = $(BUILD_DIR)/message.o
 
@@ -52,8 +56,20 @@ $(BUILD_DIR)/client.o: $(CLIENT_SRC) $(CLIENT_HEADERS)
 $(SERVER_EXEC): $(SERVER_OBJ) $(GAME_OBJ) $(MESSAGE_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 
-$(BUILD_DIR)/server.o: $(SERVER_SRC) $(SERVER_HEADERS)
-	$(CC) $(CFLAGS) -c $(SERVER_SRC) -o $@
+$(BUILD_DIR)/server.o: $(SRC_DIR)/server/server.c $(SERVER_HEADERS)
+	$(CC) $(CFLAGS) -c $(SRC_DIR)/server/server.c -o $@
+
+$(BUILD_DIR)/ranking.o: $(SRC_DIR)/server/ranking.c $(SRC_DIR)/server/ranking.h $(SERVER_HEADERS)
+	$(CC) $(CFLAGS) -c $(SRC_DIR)/server/ranking.c -o $@
+
+$(BUILD_DIR)/friends.o: $(SRC_DIR)/server/friends.c $(SRC_DIR)/server/friends.h $(SERVER_HEADERS)
+	$(CC) $(CFLAGS) -c $(SRC_DIR)/server/friends.c -o $@
+
+$(BUILD_DIR)/savegame.o: $(SRC_DIR)/server/savegame.c $(SRC_DIR)/server/savegame.h $(SERVER_HEADERS)
+	$(CC) $(CFLAGS) -c $(SRC_DIR)/server/savegame.c -o $@
+
+$(BUILD_DIR)/savegame_extra.o: $(SRC_DIR)/server/savegame_extra.c $(SRC_DIR)/server/savegame.h $(SERVER_HEADERS)
+	$(CC) $(CFLAGS) -c $(SRC_DIR)/server/savegame_extra.c -o $@
 
 # Game library build
 $(BUILD_DIR)/game.o: $(GAME_SRC) $(GAME_HEADERS)
