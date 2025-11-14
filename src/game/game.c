@@ -142,6 +142,31 @@ static int check_player_validity(Board* board, int place, int player) {
     return 1;  // Everything is valid
 }
 
+// Function to compare two board states
+static int compare_boards(Board* board, BoardState* state) {
+    for (int i = 0; i < 12; i++) {
+        if (board->board[i] != state->board[i]) {
+            return 0;  // Boards does not match
+        }
+    }
+    if (board->player1_captures != state->player1_captures || board->player2_captures != state->player2_captures) {
+        return 0;  // Captures does not match
+    }
+    return 1;  // Boards match
+}
+
+// Function to detect cycles by comparing the current board state with previous ones
+static int detect_cycle(Board* board) {
+    if(board->history_size < 10 )return 0; 
+    for (int i = 0; i < board->history_size; i++) {
+        if (compare_boards(board, &board->history[i])) {
+            return 1;  // Cycle detected
+        }
+    }
+    return 0;  // No cycle detected
+}
+
+
 // Check if the game is over 
 int game_over(Board* board) {
     // Check if either player has captured at least 25 pebbles
@@ -182,6 +207,7 @@ int game_over(Board* board) {
         return 1; 
     }
 
+    if(detect_cycle(board)) return 1;
     return 0;  // The game is still ongoing
 }
 
@@ -289,6 +315,19 @@ static int simulate_collect_captures(Board* board, int player, int* order, int i
     return opponent_can_play;
 }
 
+static void save_history(Board* board, char * move) {
+    if (board->history_size < MAX_HISTORY_DEPTH - 1) {
+        board->history[board->history_size] = (BoardState){
+            .player1_captures = board->player1_captures,
+            .player2_captures = board->player2_captures,
+        };
+        snprintf(board->history[board->history_size].move, sizeof(board->history[board->history_size].move), "%s", move);
+        for (int i = 0; i < 12; i++) {
+            board->history[board->history_size].board[i] = board->board[i];
+        }
+        board->history_size++;
+    }
+}
 //______________________________Application______________________________
 // Check if the current orientation is correct and sets it for the game
 int choose_clockwise(Board* board, int clockwise){
@@ -318,6 +357,8 @@ Board* create_board() {
     board->round = 0;   // Start from round 0 and also determines which player's turn it is (even number -> player 1 / uneven number -> player 2)
     board->player1_captures = 0;  // Initialize captures for player 1
     board->player2_captures = 0;  // Initialize captures for player 2
+    board->history_size = 0;  // Initialize history
+    save_history(board,"begining");
     return board;
 }
 
@@ -351,10 +392,63 @@ void print_board(Board* board) {
     printf("Player 2 Captures: %d\n", board->player2_captures);
 }
 
+//Print the game history
+#include <stdio.h>
+
+void print_history(Board* board, char* player1_name, char* player2_name){
+    printf("\n\nGame History:\n");
+    printf("Player 1: %s\n", player1_name);
+    printf("Player 1: %s\n", player2_name);
+    
+    for (int i = 0; i < board->history_size; i++) {
+        // Display the move number and current player
+        printf("Round %d - ", i + 1);
+        printf("Player %d selected ", (i % 2) + 1);  // Player 1 or 2 based on the move index
+
+        // Display the move (for example, "A" or "B")
+        printf("%c\n\n", board->history[i].move[9]);  // Extract the letter (e.g., A, B, C) from the string
+
+        // Display the board state after this move
+        printf("Board state after move %d:\n", i + 1);
+        
+        // Display the board in a similar way to print_board()
+        printf("    player1 \n");
+        for (int j = 0; j < 6; j++) {
+            printf("%c  ", 65 + j);  // A to F
+        }
+        printf("\n");
+        for (int j = 0; j < 6; j++) {
+            printf("%d  ", board->history[i].board[j]);
+        }
+        printf("\n\n");
+
+        for (int j = 6; j < 12; j++) {
+            printf("%d  ", board->history[i].board[j]);
+        }
+        printf("\n");
+        for (int j = 0; j < 6; j++) {
+            printf("%c  ", 97 + j);  // a to f
+        }
+        printf("\n");
+        printf("    player2 \n");
+
+        // Display current captures for each player after the move
+        printf("Player 1 Captures: %d\n", board->history[i].player1_captures);
+        printf("Player 2 Captures: %d\n", board->history[i].player2_captures);
+        printf("\n");
+    }
+}
+
+
 // Execute a player's turn (distribute pebbles, handle capture, and update player/round)
 int player_turn(Board* board, int place) {
     int player = board->round % 2;
-
+    if (('A' + place) == 'S' || ('a' + place) == 's') {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "\nPlayer %d surrendered\n", player + 1);
+        save_history(board, msg);
+        return -6;
+    }
     // Check player validity (can play, valid move, and valid clockwise direction)
     int pass = check_player_validity(board, place, player);
     if (pass != 1) return pass;
@@ -385,7 +479,9 @@ int player_turn(Board* board, int place) {
 
     // Update the round and change the player
     board->round += 1;
-
+    char move[50];
+    snprintf(move, sizeof(move), "Player %d selected %c", player + 1, 'A' + place%6);
+    save_history(board, move);
     return 0;  // Successfully executed the player's turn
 }
 

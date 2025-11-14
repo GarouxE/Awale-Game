@@ -17,15 +17,40 @@ int save_game(Client *player1, Client *player2, Board *board, Game *game){
    fprintf(f, "GameName: %s\n", game ? game->game_name : "(unnamed)");
    fprintf(f, "Player1: %s\n", player1 ? player1->name : "(unknown)");
    fprintf(f, "Player2: %s\n", player2 ? player2->name : "(unknown)");
-   /* Pretty-print board in two rows (A-F / a-f) */
-   fprintf(f, "    A   B   C   D   E   F\n");
-   fprintf(f, "   (%d) (%d) (%d) (%d) (%d) (%d)\n",
-      board->board[0], board->board[1], board->board[2], board->board[3], board->board[4], board->board[5]);
-   fprintf(f, "   (%d) (%d) (%d) (%d) (%d) (%d)\n",
-      board->board[6], board->board[7], board->board[8], board->board[9], board->board[10], board->board[11]);
-   fprintf(f, "    a   b   c   d   e   f\n");
-   fprintf(f, "Captures: P1=%d P2=%d\n", board->player1_captures, board->player2_captures);
    fprintf(f, "Clockwise: %d\n", board->clockwise);
+   /* Pretty-print board in two rows (A-F / a-f) */
+
+   for (int i = 0; i < game->board->history_size; i++) {
+        char frame[BUF_SIZE];
+        frame[0] = '\0';
+
+        fprintf(f,
+            "\n========== GAME BOARD (Round %d) ==========\n"
+            "          %s (P1)\n\n"
+            "    A   B   C   D   E   F\n"
+            "   (%d) (%d) (%d) (%d) (%d) (%d)\n"
+            "   (%d) (%d) (%d) (%d) (%d) (%d)\n"
+            "    a   b   c   d   e   f\n\n"
+            "          %s (P2)\n\n"
+            "Captures:\n"
+            "  %s: %d\n"
+            "  %s: %d\n"
+            "Move played: %s\n"
+            "================================\n",
+            i + 1,
+            game->player1.name,
+            board->history[i].board[0], board->history[i].board[1], board->history[i].board[2],
+            board->history[i].board[3], board->history[i].board[4], board->history[i].board[5],
+            board->history[i].board[6], board->history[i].board[7], board->history[i].board[8],
+            board->history[i].board[9], board->history[i].board[10], board->history[i].board[11],
+            game->player2.name,
+            game->player1.name, board->history[i].player1_captures,
+            game->player2.name, board->history[i].player2_captures,
+            board->history[i].move
+        );
+
+    }
+   fprintf(f, "Captures: P1=%d P2=%d\n", board->player1_captures, board->player2_captures);
    fprintf(f, "=== GAME END ===\n\n");
 
    fclose(f);

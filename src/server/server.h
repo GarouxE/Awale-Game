@@ -53,11 +53,39 @@ typedef struct {
    Game* current_game;
 } Context;
 
-/* Only expose functions that are used by other modules. Internal helpers
-   are defined static inside server.c and should not be declared here. */
+/* prototypes for helpers */
+static int load_score_for_user(const char *filename, const char *username);
+static int save_score_for_user(const char *filename, const char *username, int score);
+static int find_client_index_by_name(Client *clients, int actual, const char *name);
+static int is_username_unique(Client *clients, int actual, const char *name);
 
-/* write_client is implemented in server.c and used by other modules. */
+/* Forward declarations for static helpers defined later in the .c file */
 void write_client(SOCKET sock, const char *buffer);
+static void init(void);
+static void end(void);
+static int init_connection(void);
+static void end_connection(int sock);
+static int read_client(SOCKET sock, char *buffer);
+static void send_message_to_all_clients(Client *clients, Client sender, int actual, const char *buffer, char from_server);
+static void list_clients(Client *clients, int actual, char* response);
+static void list_games(Game **games, char* response);
+static void modify_bio(Client* sender, char* buffer, char* response);
+static int challenge_player(Client *clientList, Client* client, int actual, char *buffer);
+static void list_commands(Client* client, char* response);
+static void talk_to(Client* clients, Client* sender, int actual, char* buffer, char* response);
+static void accept_challenge(Game** games, Client* clientList, Client* challengee, char* response, int actual);
+static void refuse_challenge(Client* challengee, char* response);
+static void observe_game(Game** games, Client* clients, int actual, char* buffer, Client* client, char* response);
+static void quit_game(Game** games, Client* sender, char* response );
+static int create_game(Client *player1, Client *player2, Game **gamelist, Board *board, Game *new_game);
+static int remove_game(Game **gamelist, Game *game);
+static void remove_client(Client *clients, int to_remove, int *actual);
+static void clear_clients(Client *clients, int actual);
+static void parse_command(const char *buffer, char* username, char* message, int username_bool, int message_bool);
+static void treat_command(Game **games, Client *clients, Client* client, int actual, const char *buffer, int in_game);
+static void print_board(Board* board, char* buffer, Client player1, Client player2);
+int play(Game** games, Client* clients, Client player1, int actual, Client player2, Game* game);
+void* play_thread(void* arg);
 
 
 #endif /* guard */

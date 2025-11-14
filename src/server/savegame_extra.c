@@ -52,10 +52,13 @@ void view_saved_game(Client* sender, const char* buffer, char* response) {
       }
       if (in_block) {
          strncat(block, line, BUF_SIZE - strlen(block) - 1);
+         write_client(sender->sock, block);
+         block[0] = '\0';
          if (strcmp(line, "=== GAME END ===\n") == 0) {
             in_block = 0;
             if (idx == n) {
-               strncpy(response, block, BUF_SIZE - 1);
+               //strncpy(response, block, BUF_SIZE - 1);
+               snprintf(response, BUF_SIZE, "[INFO] Review of the game completed.\n");
                response[BUF_SIZE - 1] = '\0';
                fclose(f);
                return;
