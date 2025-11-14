@@ -3,7 +3,7 @@
 #include <errno.h>
 #include <string.h>
 
-#include "client2.h"
+#include "client.h"
 
 static void init(void)
 {
@@ -27,14 +27,21 @@ static void end(void)
 
 static void app(const char *address, const char *name)
 {
+   /* verify name not null else refuse connection*/
+   if (name == NULL || name[0] == '\0') {
+      fprintf(stderr, "Error : you need to enter an username.\n");
+      exit(EXIT_FAILURE);
+   }
+
    SOCKET sock = init_connection(address);
    char buffer[BUF_SIZE];
 
    fd_set rdfs;
 
    /* send our name */
-   write_server(sock, name);
-
+   write_server(sock, name); 
+   printf("You're connected as %s!\n", name);
+   
    while(1)
    {
       FD_ZERO(&rdfs);
