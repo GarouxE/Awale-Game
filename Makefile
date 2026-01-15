@@ -1,58 +1,79 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -IClient -IServeur -IGame
+CFLAGS = -Wall -Wextra -lpthread -Isrc/client -Isrc/server -Isrc/game
 
 # Dossiers
+SRC_DIR = src
+BUILD_DIR = build
 BIN_DIR = bin
 
 # Executables
 CLIENT_EXEC = $(BIN_DIR)/client
 SERVER_EXEC = $(BIN_DIR)/server
-GAME_EXEC = $(BIN_DIR)/game
 
 # Sources
-CLIENT_SRC = Client/client2.c
-SERVER_SRC = Serveur/server2.c
-GAME_SRC = Game/game.c
+CLIENT_SRC = $(SRC_DIR)/client/client.c
+SERVER_SRC = $(SRC_DIR)/server/server.c \
+			 $(SRC_DIR)/server/ranking.c \
+			 $(SRC_DIR)/server/friends.c \
+			 $(SRC_DIR)/server/savegame.c \
+			 $(SRC_DIR)/server/savegame_extra.c
+GAME_SRC   = $(SRC_DIR)/game/game.c
 
 # Headers
-CLIENT_HEADERS = Client/client2.h
-SERVER_HEADERS = Serveur/server2.h Serveur/client2.h
-GAME_HEADERS = Game/game.h
+CLIENT_HEADERS = $(SRC_DIR)/client/client.h
+SERVER_HEADERS = $(SRC_DIR)/server/server.h $(SRC_DIR)/server/client.h $(SRC_DIR)/server/message.h $(SRC_DIR)/game/game.h
+GAME_HEADERS   = $(SRC_DIR)/game/game.h
 
 # Objects
-CLIENT_OBJ = Client/client2.o
-SERVER_OBJ = Serveur/server2.o
-GAME_OBJ = Game/game.o
+CLIENT_OBJ = $(BUILD_DIR)/client.o
+SERVER_OBJ = $(BUILD_DIR)/server.o $(BUILD_DIR)/ranking.o $(BUILD_DIR)/friends.o $(BUILD_DIR)/savegame.o $(BUILD_DIR)/savegame_extra.o
+GAME_OBJ   = $(BUILD_DIR)/game.o
+MESSAGE_OBJ = $(BUILD_DIR)/message.o
 
 .PHONY: all clean
 
-all: $(BIN_DIR) $(CLIENT_EXEC) $(SERVER_EXEC) $(GAME_EXEC)
+all: $(BUILD_DIR) $(BIN_DIR) $(CLIENT_EXEC) $(SERVER_EXEC)
 
-# Create bin directory if it doesn't exist
+# Create directories if they don't exist
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+
 $(BIN_DIR):
 	mkdir -p $(BIN_DIR)
+
+# Message build
+$(BUILD_DIR)/message.o: src/server/message.c src/server/message.h
+	$(CC) $(CFLAGS) -c src/server/message.c -o $@
 
 # Client build
 $(CLIENT_EXEC): $(CLIENT_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 
-Client/client2.o: $(CLIENT_SRC) $(CLIENT_HEADERS)
+$(BUILD_DIR)/client.o: $(CLIENT_SRC) $(CLIENT_HEADERS)
 	$(CC) $(CFLAGS) -c $(CLIENT_SRC) -o $@
 
 # Server build
-$(SERVER_EXEC): $(SERVER_OBJ)
+$(SERVER_EXEC): $(SERVER_OBJ) $(GAME_OBJ) $(MESSAGE_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 
-Serveur/server2.o: $(SERVER_SRC) $(SERVER_HEADERS)
-	$(CC) $(CFLAGS) -c $(SERVER_SRC) -o $@
+$(BUILD_DIR)/server.o: $(SRC_DIR)/server/server.c $(SERVER_HEADERS)
+	$(CC) $(CFLAGS) -c $(SRC_DIR)/server/server.c -o $@
 
-# Game build
-$(GAME_EXEC): $(GAME_OBJ)
-	$(CC) $(CFLAGS) -o $@ $^
+$(BUILD_DIR)/ranking.o: $(SRC_DIR)/server/ranking.c $(SRC_DIR)/server/ranking.h $(SERVER_HEADERS)
+	$(CC) $(CFLAGS) -c $(SRC_DIR)/server/ranking.c -o $@
 
-Game/game.o: $(GAME_SRC) $(GAME_HEADERS)
+$(BUILD_DIR)/friends.o: $(SRC_DIR)/server/friends.c $(SRC_DIR)/server/friends.h $(SERVER_HEADERS)
+	$(CC) $(CFLAGS) -c $(SRC_DIR)/server/friends.c -o $@
+
+$(BUILD_DIR)/savegame.o: $(SRC_DIR)/server/savegame.c $(SRC_DIR)/server/savegame.h $(SERVER_HEADERS)
+	$(CC) $(CFLAGS) -c $(SRC_DIR)/server/savegame.c -o $@
+
+$(BUILD_DIR)/savegame_extra.o: $(SRC_DIR)/server/savegame_extra.c $(SRC_DIR)/server/savegame.h $(SERVER_HEADERS)
+	$(CC) $(CFLAGS) -c $(SRC_DIR)/server/savegame_extra.c -o $@
+
+# Game library build
+$(BUILD_DIR)/game.o: $(GAME_SRC) $(GAME_HEADERS)
 	$(CC) $(CFLAGS) -c $(GAME_SRC) -o $@
 
-# Clean
 clean:
-	rm -f Client/*.o Serveur/*.o Game/*.o $(BIN_DIR)/*
+	rm -f $(BUILD_DIR)/*.o $(BIN_DIR)/*
